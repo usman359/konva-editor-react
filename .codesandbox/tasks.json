@@ -3,7 +3,7 @@
   "setupTasks": [
     {
       "name": "Install Dependencies",
-      "command": "pnpm install"
+      "command": "npm install"
     }
   ],
 
@@ -11,11 +11,11 @@
   "tasks": {
     "install": {
       "name": "install dependencies",
-      "command": "pnpm install"
+      "command": "npm install"
     },
     "Development": {
       "name": "Development",
-      "command": "pnpm dev",
+      "command": "npm run dev",
       "runAtStart": true,
       "preview": {
         "port": 5173
