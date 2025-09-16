@@ -6,7 +6,15 @@ import { PagesTimeline } from "polotno/pages-timeline";
 import { ZoomButtons } from "polotno/toolbar/zoom-buttons";
 import { SidePanel } from "polotno/side-panel";
 import { Workspace } from "polotno/canvas/workspace";
-import { Button, Menu, MenuItem, Popover, Position } from "@blueprintjs/core";
+import {
+  Button,
+  Menu,
+  MenuItem,
+  Popover,
+  Position,
+  TextArea,
+  FormGroup,
+} from "@blueprintjs/core";
 import { Download } from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
@@ -14,88 +22,68 @@ import "@blueprintjs/core/lib/css/blueprint.css";
 
 import { createStore } from "polotno/model/store";
 
-// CSS to hide the PagesTimeline header and make it always open
-const pagesTimelineStyles = `
-  /* Hide the entire navbar/header section of PagesTimeline */
-  .polotno-pages-timeline .bp4-navbar {
-    display: none !important;
-  }
-  
-  /* Hide the toggle button in PagesTimeline */
-  .polotno-pages-timeline .bp4-navbar .bp4-button[aria-label*="pages"],
-  .polotno-pages-timeline .bp4-navbar .bp4-button:first-child {
-    display: none !important;
-  }
-  
-  /* Ensure the pages container is always visible */
-  .polotno-pages-timeline {
-    height: auto !important;
-    max-height: none !important;
-  }
-  
-  /* Hide any collapse/expand buttons */
-  .polotno-pages-timeline .bp4-button[icon="chevron-up"],
-  .polotno-pages-timeline .bp4-button[icon="chevron-down"],
-  .polotno-pages-timeline .bp4-button[icon="collapse-all"],
-  .polotno-pages-timeline .bp4-button[icon="expand-all"] {
-    display: none !important;
-  }
-  
-  /* Hide any text that says "Pages" */
-  .polotno-pages-timeline *[aria-label*="pages"],
-  .polotno-pages-timeline *[title*="pages"],
-  .polotno-pages-timeline *:contains("Pages") {
-    display: none !important;
-  }
-`;
-
-// Inject the CSS
-const pagesStyle = document.createElement("style");
-pagesStyle.textContent = pagesTimelineStyles;
-document.head.appendChild(pagesStyle);
-
 const store = createStore({
   key: "nFA5H9elEytDyPyvKL7T", // you can create it here: https://polotno.com/cabinet/
   // you can hide back-link on a paid license
   // but it will be good if you can keep it for Polotno project support
-  showCredit: false,
+  showCredit: true,
 });
-const page = store.addPage();
+store.addPage();
 
-// Background Overlay to hide credit text
-const CreditHider = () => {
+// Custom Side Panel that includes both default panel and narration panel
+const CustomSidePanel = ({ store }) => {
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: "100px",
-        right: "10px",
-        width: "200px",
-        height: "30px",
-        backgroundColor: "#e7e7e7",
-        zIndex: 9999,
-        pointerEvents: "none",
-      }}
-    />
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <SidePanel store={store} />
+    </div>
   );
 };
 
 // Custom Download Button Component
 const CustomDownloadButton = ({ store }) => {
   const handleSaveAsImage = () => {
-    store.download("png");
+    try {
+      console.log("Attempting to download as PNG...");
+      store.saveAsImage();
+    } catch (error) {
+      console.error("Error downloading PNG:", error);
+    }
   };
 
   const handleSaveAsPDF = () => {
-    store.download("pdf");
+    try {
+      console.log("Attempting to download as PDF...");
+      store.saveAsPDF();
+    } catch (error) {
+      console.error("Error downloading PDF:", error);
+    }
   };
 
   const handleSaveAsJSON = () => {
     const json = store.toJSON();
-    const blob = new Blob([JSON.stringify(json, null, 2)], {
+
+    // Add narration and order properties directly to children
+    const jsonWithNarration = {
+      ...json,
+      pages:
+        json.pages?.map((page) => ({
+          ...page,
+          children:
+            page.children
+              ?.slice()
+              .reverse()
+              .map((child, index) => ({
+                ...child,
+                narration: child.name || "", // Use name as narration
+                order: index + 1, // First element in layers gets order 1
+              })) || [],
+        })) || [],
+    };
+
+    const blob = new Blob([JSON.stringify(jsonWithNarration, null, 2)], {
       type: "application/json",
     });
-    saveAs(blob, "design.json");
+    saveAs(blob, "design-with-narration.json");
   };
 
   const downloadMenu = (
@@ -119,6 +107,52 @@ const CustomDownloadButton = ({ store }) => {
 };
 
 export const App = ({ store }) => {
+  // Simple text replacement for layers panel
+  React.useEffect(() => {
+    const replaceText = () => {
+      // Only target text nodes to avoid interfering with React
+      const walker = document.createTreeWalker(
+        document.querySelector(".polotno-side-panel") || document.body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent) {
+          // Replace all instances of "elements" with "narrations" (case insensitive)
+          if (node.textContent.toLowerCase().includes("elements")) {
+            node.textContent = node.textContent.replace(
+              /elements/gi,
+              "Narrations"
+            );
+          }
+          // Replace all instances of "element" with "narration" (case insensitive)
+          if (node.textContent.toLowerCase().includes("element")) {
+            node.textContent = node.textContent.replace(
+              /element/gi,
+              "Narration"
+            );
+          }
+        }
+      }
+    };
+
+    // Run immediately
+    replaceText();
+
+    // Use requestAnimationFrame for smooth replacement
+    const runReplacement = () => {
+      replaceText();
+      requestAnimationFrame(runReplacement);
+    };
+
+    const animationId = requestAnimationFrame(runReplacement);
+
+    return () => cancelAnimationFrame(animationId);
+  }, []);
+
   // Ensure pages container stays open
   React.useEffect(() => {
     const ensurePagesOpen = () => {
@@ -183,7 +217,7 @@ export const App = ({ store }) => {
     <>
       <PolotnoContainer style={{ width: "100vw", height: "100vh" }}>
         <SidePanelWrap>
-          <SidePanel store={store} />
+          <CustomSidePanel store={store} />
         </SidePanelWrap>
         <WorkspaceWrap>
           <div
@@ -202,7 +236,6 @@ export const App = ({ store }) => {
           <PagesTimeline store={store} defaultOpened={true} />
         </WorkspaceWrap>
       </PolotnoContainer>
-      <CreditHider />
     </>
   );
 };
