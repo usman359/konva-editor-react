@@ -99,6 +99,119 @@ const CustomDownloadButton = ({ store }) => {
 };
 
 export const App = ({ store }) => {
+  // Save to localStorage whenever store changes
+  React.useEffect(() => {
+    let userClearedStorage = false;
+    let hasInitialData = false;
+
+    // Check if there's initial data in localStorage
+    const checkInitialState = () => {
+      const savedState = localStorage.getItem("polotno-demo-state");
+      if (savedState !== null) {
+        hasInitialData = true;
+        console.log("Found existing data in localStorage");
+      } else {
+        console.log("No existing data in localStorage (first time or cleared)");
+      }
+    };
+
+    checkInitialState();
+
+    const saveToLocalStorage = () => {
+      try {
+        // Only skip if user manually cleared it during the session (not on initial load)
+        if (userClearedStorage && hasInitialData) {
+          console.log(
+            "Skipping auto-save - user cleared localStorage during session"
+          );
+          return;
+        }
+
+        console.log("Attempting to save to localStorage...");
+        const json = store.toJSON();
+        console.log("Store JSON:", json);
+        localStorage.setItem("polotno-demo-state", JSON.stringify(json));
+        console.log("Successfully saved to localStorage");
+      } catch (error) {
+        console.error("Error saving to localStorage:", error);
+      }
+    };
+
+    // Save on any store change
+    const handleStoreChange = () => {
+      saveToLocalStorage();
+    };
+
+    // Listen for store changes
+    if (store.on) {
+      store.on("change", handleStoreChange);
+      store.on("update", handleStoreChange);
+      store.on("selection:change", handleStoreChange);
+      console.log("Store event listeners attached");
+    } else {
+      console.log("Store.on not available, using fallback approach");
+    }
+
+    // Manual save trigger for testing
+    const manualSave = () => {
+      console.log("Manual save triggered");
+      saveToLocalStorage();
+    };
+
+    // Add manual save to window for testing
+    window.manualSave = manualSave;
+
+    // Also save periodically as backup
+    const saveInterval = setInterval(saveToLocalStorage, 5000);
+
+    // Test save immediately
+    setTimeout(() => {
+      console.log("Testing immediate save...");
+      saveToLocalStorage();
+    }, 1000);
+
+    // Listen for storage changes to detect if user manually cleared it
+    const handleStorageChange = (e) => {
+      if (
+        e.key === "polotno-demo-state" &&
+        e.newValue === null &&
+        e.oldValue !== null
+      ) {
+        userClearedStorage = true;
+        console.log("Detected manual localStorage clear during session");
+      } else if (e.key === "polotno-demo-state" && e.newValue !== null) {
+        userClearedStorage = false;
+        console.log("Detected localStorage restore, resuming auto-save");
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      if (store.off) {
+        store.off("change", handleStoreChange);
+        store.off("update", handleStoreChange);
+        store.off("selection:change", handleStoreChange);
+      }
+      clearInterval(saveInterval);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [store]);
+
+  // Load from localStorage on mount
+  React.useEffect(() => {
+    try {
+      const savedState = localStorage.getItem("polotno-demo-state");
+      if (savedState) {
+        const json = JSON.parse(savedState);
+        store.loadJSON(json);
+        console.log("Loaded from localStorage");
+      }
+    } catch (error) {
+      console.error("Error loading from localStorage:", error);
+    }
+  }, [store]);
+
   // Simple text replacement for layers panel
   React.useEffect(() => {
     const replaceText = () => {
@@ -143,6 +256,339 @@ export const App = ({ store }) => {
     const animationId = requestAnimationFrame(runReplacement);
 
     return () => cancelAnimationFrame(animationId);
+  }, []);
+
+  // Add modal functionality to narration input fields in layers panel
+  React.useEffect(() => {
+    const addModalToInputs = () => {
+      // Find all input fields in the side panel
+      const sidePanel = document.querySelector(".polotno-side-panel");
+      if (!sidePanel) return;
+
+      const inputs = sidePanel.querySelectorAll("input[type='text'], textarea");
+
+      inputs.forEach((input) => {
+        // Skip if already processed
+        if (input.dataset.modalAdded) return;
+
+        // Mark as processed
+        input.dataset.modalAdded = "true";
+
+        // Add click handler to make input directly editable
+        input.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Make the input directly editable instead of opening modal
+          console.log("Making input directly editable...");
+
+          // Focus and select the input
+          input.focus();
+          input.select();
+
+          // Remove any readonly/disabled attributes
+          input.removeAttribute("readonly");
+          input.removeAttribute("disabled");
+
+          // Add event listeners for saving changes
+          const handleKeyDown = (keyEvent) => {
+            if (keyEvent.key === "Enter") {
+              keyEvent.preventDefault();
+              input.blur(); // This will trigger the blur event
+            }
+          };
+
+          const handleBlur = () => {
+            const newText = input.value.trim();
+            console.log("Input value changed to:", newText);
+
+            // Update the Polotno store
+            try {
+              const selectedElements = store.selectedElements;
+              if (selectedElements && selectedElements.length > 0) {
+                const selectedElement = selectedElements[0];
+                selectedElement.set("name", newText);
+                console.log("Updated element name in store:", newText);
+              }
+            } catch (error) {
+              console.log("Could not update store:", error);
+            }
+
+            // Remove event listeners
+            input.removeEventListener("keydown", handleKeyDown);
+            input.removeEventListener("blur", handleBlur);
+          };
+
+          input.addEventListener("keydown", handleKeyDown);
+          input.addEventListener("blur", handleBlur);
+
+          // Continue with modal logic as fallback
+
+          // Store the original text before opening modal
+          let originalText = input.value || input.getAttribute("value") || "";
+
+          // If no text found, try to get it from the selected element in the store
+          if (!originalText) {
+            try {
+              const selectedElements = store.selectedElements;
+              if (selectedElements && selectedElements.length > 0) {
+                originalText = selectedElements[0].name || "";
+              }
+            } catch (error) {
+              console.log("Could not get text from store:", error);
+            }
+          }
+
+          // If still no text, try to get it from the parent element or nearby text
+          if (!originalText) {
+            // Look for text in the parent container
+            const parent = input.closest(
+              ".polotno-element-item, .bp5-menu-item, [data-element-id]"
+            );
+            if (parent) {
+              const textElement =
+                parent.querySelector("span, div, p") || parent;
+              originalText = textElement.textContent?.trim() || "";
+            }
+          }
+
+          // If still no text, try to get the actual element text from the store
+          if (!originalText) {
+            try {
+              const selectedElements = store.selectedElements;
+              if (selectedElements && selectedElements.length > 0) {
+                const element = selectedElements[0];
+                // Try different properties that might contain the element text
+                originalText =
+                  element.text || element.name || element.content || "";
+                console.log("Got element text from store:", originalText);
+              }
+            } catch (error) {
+              console.log("Could not get element text from store:", error);
+            }
+          }
+
+          // If still no text, check if input has placeholder and use that as starting point
+          if (!originalText && input.placeholder) {
+            originalText = input.placeholder;
+          }
+
+          // If still no text, try to get the default element name from the selected element
+          if (!originalText) {
+            try {
+              const selectedElements = store.selectedElements;
+              if (selectedElements && selectedElements.length > 0) {
+                const selectedElement = selectedElements[0];
+                // Get the element type and create a default name
+                const elementType = selectedElement.type || "Element";
+                originalText = `${elementType} ${Date.now()
+                  .toString()
+                  .slice(-4)}`;
+                console.log("Using default element name:", originalText);
+              }
+            } catch (error) {
+              console.log("Could not get default element name:", error);
+            }
+          }
+
+          // Final fallback
+          if (!originalText) {
+            originalText = `Element ${Date.now().toString().slice(-4)}`;
+          }
+
+          console.log("Captured original text:", originalText);
+          console.log("Input element:", input);
+          console.log("Input value:", input.value);
+          console.log("Input placeholder:", input.placeholder);
+          console.log("Input attributes:", input.getAttribute("value"));
+          console.log("Input parent:", input.parentElement);
+          console.log("Input parent text:", input.parentElement?.textContent);
+
+          // If still no text, let's try a more aggressive approach
+          if (!originalText) {
+            // Look for any text in the entire parent hierarchy
+            let currentElement = input.parentElement;
+            while (currentElement && !originalText) {
+              const text = currentElement.textContent?.trim();
+              if (text && text !== "Type element name..." && text.length > 0) {
+                // Extract just the element name part (before any icons or buttons)
+                const lines = text.split("\n").filter((line) => line.trim());
+                for (const line of lines) {
+                  if (
+                    line.trim() &&
+                    !line.includes("👁") &&
+                    !line.includes("🔒") &&
+                    !line.includes("🗑")
+                  ) {
+                    originalText = line.trim();
+                    break;
+                  }
+                }
+              }
+              currentElement = currentElement.parentElement;
+            }
+          }
+
+          // Final fallback - if still no text, try to get it from the store again
+          if (!originalText) {
+            try {
+              const selectedElements = store.selectedElements;
+              if (selectedElements && selectedElements.length > 0) {
+                originalText =
+                  selectedElements[0].name || selectedElements[0].text || "";
+                console.log("Got text from store as fallback:", originalText);
+              }
+            } catch (error) {
+              console.log("Store fallback failed:", error);
+            }
+          }
+
+          console.log("Final captured text:", originalText);
+
+          // Open modal immediately on first click
+          openModal(originalText);
+        });
+
+        // Function to open the modal
+        const openModal = (originalText) => {
+          // Create modal overlay
+          const modal = document.createElement("div");
+          modal.style.cssText =
+            "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;";
+
+          // Create modal content
+          const modalContent = document.createElement("div");
+          modalContent.style.cssText =
+            "background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-width: 400px; max-width: 600px; width: 90%;";
+
+          // Create title
+          const title = document.createElement("h3");
+          title.textContent = "Edit Narration";
+          title.style.cssText =
+            "margin: 0 0 15px 0; font-size: 16px; color: #333;";
+
+          // Create textarea
+          const textarea = document.createElement("textarea");
+          textarea.value = originalText || "";
+          textarea.placeholder = "Enter narration for this element...";
+          textarea.style.cssText =
+            "width: 100%; height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; box-sizing: border-box; resize: vertical; font-family: inherit;";
+
+          // Create buttons container
+          const buttonsContainer = document.createElement("div");
+          buttonsContainer.style.cssText =
+            "display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;";
+
+          // Create Save button
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "Save Changes";
+          saveBtn.style.cssText =
+            "background: #007acc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
+
+          // Create Cancel button
+          const cancelBtn = document.createElement("button");
+          cancelBtn.textContent = "Cancel";
+          cancelBtn.style.cssText =
+            "background: #f5f5f5; color: #333; border: 1px solid #ddd; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
+
+          // Assemble modal
+          buttonsContainer.appendChild(cancelBtn);
+          buttonsContainer.appendChild(saveBtn);
+          modalContent.appendChild(title);
+          modalContent.appendChild(textarea);
+          modalContent.appendChild(buttonsContainer);
+          modal.appendChild(modalContent);
+          document.body.appendChild(modal);
+
+          // Focus textarea
+          textarea.focus();
+          textarea.select();
+
+          // Handle save
+          const saveEdit = () => {
+            try {
+              const newText = textarea.value.trim();
+              console.log("=== SAVE FUNCTION CALLED ===");
+              console.log("New text from textarea:", newText);
+              console.log("Original input value:", input.value);
+
+              // Minimal, reliable update: find selected element and set its fields
+              try {
+                const selected = store.selectedElements?.[0];
+                if (selected) {
+                  if (typeof selected.set === "function") {
+                    selected.set({ name: newText });
+                    // For text elements, also set text so Layers reflects it
+                    try {
+                      selected.set({ text: newText });
+                    } catch (_) {}
+                  } else {
+                    // fallback
+                    selected.name = newText;
+                    if ("text" in selected) selected.text = newText;
+                  }
+                }
+              } catch (e) {
+                console.log("Direct element update failed:", e);
+              }
+
+              // Reflect immediately in the visible input row
+              input.value = newText;
+              input.setAttribute("value", newText);
+              input.placeholder = newText;
+              const ev1 = new Event("input", { bubbles: true });
+              const ev2 = new Event("change", { bubbles: true });
+              input.dispatchEvent(ev1);
+              input.dispatchEvent(ev2);
+
+              // Close modal now; avoid further heavy DOM logic
+              document.body.removeChild(modal);
+              return;
+            } catch (error) {
+              console.error("Error in saveEdit:", error);
+              // Ensure modal closes even if there's an error
+              document.body.removeChild(modal);
+            }
+          };
+
+          // Handle cancel
+          const cancelEdit = () => {
+            document.body.removeChild(modal);
+          };
+
+          // Event listeners
+          saveBtn.addEventListener("click", saveEdit);
+          cancelBtn.addEventListener("click", cancelEdit);
+          modal.addEventListener("click", (e) => {
+            if (e.target === modal) cancelEdit();
+          });
+
+          textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && e.ctrlKey) {
+              e.preventDefault();
+              saveEdit();
+            } else if (e.key === "Escape") {
+              cancelEdit();
+            }
+          });
+        };
+      });
+    };
+
+    // Run immediately and set up observer for new inputs
+    addModalToInputs();
+
+    // Set up observer to watch for new input fields
+    const observer = new MutationObserver(() => {
+      addModalToInputs();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   // Add page numbers below thumbnails
