@@ -6,15 +6,7 @@ import { PagesTimeline } from "polotno/pages-timeline";
 import { ZoomButtons } from "polotno/toolbar/zoom-buttons";
 import { SidePanel } from "polotno/side-panel";
 import { Workspace } from "polotno/canvas/workspace";
-import {
-  Button,
-  Menu,
-  MenuItem,
-  Popover,
-  Position,
-  TextArea,
-  FormGroup,
-} from "@blueprintjs/core";
+import { Button, Menu, MenuItem, Popover, Position } from "@blueprintjs/core";
 import { Download } from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
@@ -151,6 +143,160 @@ export const App = ({ store }) => {
     const animationId = requestAnimationFrame(runReplacement);
 
     return () => cancelAnimationFrame(animationId);
+  }, []);
+
+  // Add page numbers below thumbnails
+  React.useEffect(() => {
+    const addPageNumbers = () => {
+      // Find the pages container
+      const pagesContainer = document.querySelector(".polotno-pages-timeline");
+      if (!pagesContainer) {
+        console.log("Pages container not found");
+        return;
+      }
+
+      console.log("Pages container found:", pagesContainer);
+      console.log("All children:", pagesContainer.children);
+
+      // Look specifically for page containers
+      const pageThumbnails = pagesContainer.querySelectorAll(
+        ".polotno-page-container"
+      );
+      console.log("Page containers found:", pageThumbnails.length);
+
+      pageThumbnails.forEach((thumbnail, index) => {
+        console.log(`Processing thumbnail ${index + 1}:`, thumbnail);
+
+        // Find the parent container of this thumbnail
+        const container = thumbnail.closest("div");
+        if (!container) {
+          console.log("No container found for thumbnail");
+          return;
+        }
+
+        console.log("Container found:", container);
+
+        // Check if number already exists
+        if (container.querySelector(".page-number")) {
+          console.log("Number already exists, skipping");
+          return;
+        }
+
+        // Create editable number element
+        const number = document.createElement("div");
+        number.className = "page-number";
+        number.textContent = (index + 1).toString();
+        number.style.cssText =
+          "position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; text-align: center; background: white; padding: 2px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; min-width: 20px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+
+        // Make it editable on click
+        number.addEventListener("click", () => {
+          // Create modal overlay
+          const modal = document.createElement("div");
+          modal.style.cssText =
+            "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;";
+
+          // Create modal content
+          const modalContent = document.createElement("div");
+          modalContent.style.cssText =
+            "background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-width: 300px;";
+
+          // Create title
+          const title = document.createElement("h3");
+          title.textContent = "Edit Page Name";
+          title.style.cssText =
+            "margin: 0 0 15px 0; font-size: 16px; color: #333;";
+
+          // Create input
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = number.textContent;
+          input.placeholder = "Enter page name...";
+          input.style.cssText =
+            "width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; box-sizing: border-box;";
+
+          // Create buttons container
+          const buttonsContainer = document.createElement("div");
+          buttonsContainer.style.cssText =
+            "display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;";
+
+          // Create Save button
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "Save";
+          saveBtn.style.cssText =
+            "background: #007acc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
+
+          // Create Cancel button
+          const cancelBtn = document.createElement("button");
+          cancelBtn.textContent = "Cancel";
+          cancelBtn.style.cssText =
+            "background: #f5f5f5; color: #333; border: 1px solid #ddd; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
+
+          // Assemble modal
+          buttonsContainer.appendChild(cancelBtn);
+          buttonsContainer.appendChild(saveBtn);
+          modalContent.appendChild(title);
+          modalContent.appendChild(input);
+          modalContent.appendChild(buttonsContainer);
+          modal.appendChild(modalContent);
+          document.body.appendChild(modal);
+
+          // Focus input
+          input.focus();
+          input.select();
+
+          // Handle save
+          const saveEdit = () => {
+            const newText = input.value.trim() || (index + 1).toString();
+            number.textContent = newText;
+            number.title = newText; // Show full text on hover
+            document.body.removeChild(modal);
+          };
+
+          // Handle cancel
+          const cancelEdit = () => {
+            document.body.removeChild(modal);
+          };
+
+          // Event listeners
+          saveBtn.addEventListener("click", saveEdit);
+          cancelBtn.addEventListener("click", cancelEdit);
+          modal.addEventListener("click", (e) => {
+            if (e.target === modal) cancelEdit();
+          });
+
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              saveEdit();
+            } else if (e.key === "Escape") {
+              cancelEdit();
+            }
+          });
+        });
+
+        // Add to container
+        container.style.position = "relative";
+        container.appendChild(number);
+
+        console.log(`Added number ${index + 1} to container:`, container);
+      });
+    };
+
+    // Run immediately and set up observer for new pages
+    addPageNumbers();
+
+    // Set up observer to watch for new pages
+    const observer = new MutationObserver(() => {
+      addPageNumbers();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   // Ensure pages container stays open
