@@ -14,6 +14,163 @@ import "@blueprintjs/core/lib/css/blueprint.css";
 
 import { createStore } from "polotno/model/store";
 
+// Add custom CSS for vertical pages timeline
+const verticalPagesCSS = `
+  /* Force the pages timeline container to take full height and be vertical */
+  .polotno-pages-timeline {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 10px 5px !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    justify-content: flex-start !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+  }
+  
+  /* Target the Blueprint navbar that contains the pages */
+  .polotno-pages-timeline .bp5-navbar {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 10px 5px !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+  
+  /* Target the navbar group inside - this is the key element */
+  .polotno-pages-timeline .bp5-navbar-group {
+    height: auto !important;
+    min-height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex: none !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+  
+  /* Target the specific div that contains the page containers */
+  .polotno-pages-timeline .bp5-navbar-group > div {
+    height: auto !important;
+    min-height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex: none !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+  
+  /* Target the actual container that holds the pages */
+  .polotno-pages-timeline .bp5-navbar-group > div > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Page containers styling - force vertical layout */
+  .polotno-pages-timeline .polotno-page-container {
+    margin: 5px auto !important;
+    margin-right: auto !important;
+    margin-left: auto !important;
+    margin-bottom: 25px !important;
+    flex-shrink: 0 !important;
+    width: 60px !important;
+    height: 60px !important;
+    position: relative !important;
+  }
+  
+  /* Page number positioning - ensure it's below the thumbnail */
+  .polotno-pages-timeline .page-number {
+    position: absolute !important;
+    bottom: -20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    font-size: 11px !important;
+    color: #666 !important;
+    text-align: center !important;
+    background: white !important;
+    padding: 2px !important;
+    border-radius: 2px !important;
+    cursor: pointer !important;
+    border: 1px solid transparent !important;
+    min-width: 20px !important;
+    max-width: 60px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    z-index: 10 !important;
+  }
+  
+  /* Ensure any wrapper divs take full height */
+  .polotno-pages-timeline > div {
+    height: 100% !important;
+    min-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Override any horizontal flex layouts */
+  .polotno-pages-timeline * {
+    flex-direction: column !important;
+  }
+  
+  /* Specifically target any elements that might be forcing horizontal layout */
+  .polotno-pages-timeline .bp5-navbar-group,
+  .polotno-pages-timeline .bp5-navbar-group > div,
+  .polotno-pages-timeline .bp5-navbar-group > div > div {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+  }
+  
+  /* Force container elements to take full available height, but not page thumbnails */
+  .polotno-pages-timeline,
+  .polotno-pages-timeline .bp5-navbar,
+  .polotno-pages-timeline .bp5-navbar-group,
+  .polotno-pages-timeline .bp5-navbar-group > div {
+    height: 100% !important;
+    min-height: 100% !important;
+  }
+  
+  /* Keep page containers at their original size */
+  .polotno-pages-timeline .polotno-page-container {
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    width: 60px !important;
+    flex-shrink: 0 !important;
+  }
+`;
+
+// Inject the CSS
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.textContent = verticalPagesCSS;
+  document.head.appendChild(style);
+}
+
 const store = createStore({
   key: "nFA5H9elEytDyPyvKL7T", // you can create it here: https://polotno.com/cabinet/
   // you can hide back-link on a paid license
@@ -24,9 +181,127 @@ store.addPage();
 
 // Custom Side Panel that includes both default panel and narration panel
 const CustomSidePanel = ({ store }) => {
+  // Force pages timeline to take full height and be vertical
+  React.useEffect(() => {
+    const forceVerticalLayout = () => {
+      const pagesTimeline = document.querySelector(".polotno-pages-timeline");
+      const navbar = document.querySelector(
+        ".polotno-pages-timeline .bp5-navbar"
+      );
+      const navbarGroup = document.querySelector(
+        ".polotno-pages-timeline .bp5-navbar-group"
+      );
+
+      // Find all nested divs that might contain pages
+      const allDivs = document.querySelectorAll(".polotno-pages-timeline div");
+
+      // Get the viewport height
+      const viewportHeight = window.innerHeight;
+
+      if (pagesTimeline) {
+        pagesTimeline.style.height = `${viewportHeight}px`;
+        pagesTimeline.style.minHeight = `${viewportHeight}px`;
+        pagesTimeline.style.maxHeight = `${viewportHeight}px`;
+        pagesTimeline.style.flexDirection = "column";
+        pagesTimeline.style.overflowX = "hidden";
+        pagesTimeline.style.overflowY = "auto";
+        pagesTimeline.style.position = "relative";
+        pagesTimeline.style.display = "flex";
+      }
+
+      if (navbar) {
+        navbar.style.height = "auto";
+        navbar.style.minHeight = "auto";
+        navbar.style.maxHeight = "none";
+        navbar.style.flexDirection = "column";
+        navbar.style.overflowX = "hidden";
+        navbar.style.overflowY = "visible";
+        navbar.style.position = "relative";
+        navbar.style.display = "flex";
+      }
+
+      if (navbarGroup) {
+        navbarGroup.style.height = "auto";
+        navbarGroup.style.minHeight = "auto";
+        navbarGroup.style.flex = "none";
+        navbarGroup.style.flexDirection = "column";
+        navbarGroup.style.overflowX = "hidden";
+        navbarGroup.style.overflowY = "visible";
+        navbarGroup.style.position = "relative";
+        navbarGroup.style.display = "flex";
+      }
+
+      // Force all nested divs to be vertical, but keep page containers at original size
+      allDivs.forEach((div) => {
+        if (div.closest(".polotno-pages-timeline")) {
+          // Skip page containers - keep them at original size and center them
+          if (div.classList.contains("polotno-page-container")) {
+            div.style.height = "60px";
+            div.style.minHeight = "60px";
+            div.style.maxHeight = "60px";
+            div.style.width = "60px";
+            div.style.flexShrink = "0";
+            div.style.margin = "5px auto";
+            div.style.position = "relative";
+            return;
+          }
+
+          // For other divs, make them take auto height
+          div.style.flexDirection = "column";
+          div.style.overflowX = "hidden";
+          div.style.overflowY = "visible";
+          div.style.height = "auto";
+          div.style.minHeight = "auto";
+          div.style.display = "flex";
+        }
+      });
+    };
+
+    // Run immediately and on any DOM changes
+    forceVerticalLayout();
+    const interval = setInterval(forceVerticalLayout, 50); // More frequent updates
+
+    // Also run on window resize
+    window.addEventListener("resize", forceVerticalLayout);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("resize", forceVerticalLayout);
+    };
+  }, []);
+
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <SidePanel store={store} />
+    <div
+      style={{
+        height: "100vh",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "row",
+      }}
+    >
+      <div
+        style={{
+          width: "100px",
+          height: "100vh",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <PagesTimeline store={store} defaultOpened={true} />
+      </div>
+      <div
+        style={{
+          flex: 1,
+          height: "100vh",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <SidePanel store={store} />
+      </div>
     </div>
   );
 };
@@ -633,7 +908,7 @@ export const App = ({ store }) => {
         number.className = "page-number";
         number.textContent = (index + 1).toString();
         number.style.cssText =
-          "position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; text-align: center; background: white; padding: 2px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; min-width: 20px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+          "position: absolute !important; bottom: -70px !important; left: 50% !important; transform: translateX(-50%) !important; font-size: 11px !important; color: #666 !important; text-align: center !important; background: transparent !important; padding: 2px !important; border-radius: 2px !important; cursor: pointer !important; border: 1px solid transparent !important; min-width: 20px !important; max-width: 60px !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; z-index: 10 !important;";
 
         // Make it editable on click
         number.addEventListener("click", () => {
@@ -825,7 +1100,6 @@ export const App = ({ store }) => {
           </div>
           <Workspace store={store} />
           <ZoomButtons store={store} />
-          <PagesTimeline store={store} defaultOpened={true} />
         </WorkspaceWrap>
       </PolotnoContainer>
     </>
