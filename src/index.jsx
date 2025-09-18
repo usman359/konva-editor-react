@@ -14,6 +14,102 @@ import "@blueprintjs/core/lib/css/blueprint.css";
 
 import { createStore } from "polotno/model/store";
 
+// Add custom CSS for vertical pages timeline
+const verticalPagesCSS = `
+  /* Force the pages timeline container to take full height and be vertical */
+  .polotno-pages-timeline {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    padding: 10px 5px !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    justify-content: flex-start !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+  }
+  
+  /* Force all nested elements to be vertical but NOT take full height */
+  .polotno-pages-timeline * {
+    flex-direction: column !important;
+  }
+  
+  /* Target the Blueprint navbar that contains the pages */
+  .polotno-pages-timeline .bp5-navbar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    flex: 1 !important;
+  }
+  
+  /* Target the navbar group inside - this is the key element */
+  .polotno-pages-timeline .bp5-navbar-group {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    flex: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Target the specific div that contains the page containers */
+  .polotno-pages-timeline .bp5-navbar-group > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    flex: 1 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Ensure the container div also takes full height */
+  .polotno-pages-timeline > div {
+    height: 100% !important;
+    min-height: 100% !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  /* Keep individual page thumbnails at their original size */
+  .polotno-pages-timeline .polotno-page-container {
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: none !important;
+    flex: none !important;
+    width: 60px !important;
+    margin-bottom: 20px !important;
+  }
+  
+  /* Keep page thumbnail images at original size */
+  .polotno-pages-timeline .polotno-page-container img {
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: none !important;
+    width: 100% !important;
+    object-fit: contain !important;
+  }
+`;
+
+// Inject the CSS
+const style = document.createElement("style");
+style.textContent = verticalPagesCSS;
+document.head.appendChild(style);
+
 const store = createStore({
   key: "nFA5H9elEytDyPyvKL7T", // you can create it here: https://polotno.com/cabinet/
   // you can hide back-link on a paid license
@@ -633,7 +729,7 @@ export const App = ({ store }) => {
         number.className = "page-number";
         number.textContent = (index + 1).toString();
         number.style.cssText =
-          "position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; text-align: center; background: white; padding: 2px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; min-width: 20px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+          "position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; text-align: center; background: transparent; padding: 2px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; min-width: 20px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
 
         // Make it editable on click
         number.addEventListener("click", () => {
@@ -807,7 +903,25 @@ export const App = ({ store }) => {
 
   return (
     <>
-      <PolotnoContainer style={{ width: "100vw", height: "100vh" }}>
+      {/* Pages Timeline - Top Left Position */}
+      <div
+        style={{
+          position: "fixed",
+          top: "0",
+          left: "0",
+          width: "100px",
+          height: "100vh",
+          zIndex: "1000",
+          backgroundColor: "#f0f0f0",
+          border: "1px solid #ccc",
+        }}
+      >
+        <PagesTimeline store={store} defaultOpened={true} />
+      </div>
+
+      <PolotnoContainer
+        style={{ width: "100vw", height: "100vh", marginLeft: "100px" }}
+      >
         <SidePanelWrap>
           <CustomSidePanel store={store} />
         </SidePanelWrap>
@@ -825,7 +939,6 @@ export const App = ({ store }) => {
           </div>
           <Workspace store={store} />
           <ZoomButtons store={store} />
-          <PagesTimeline store={store} defaultOpened={true} />
         </WorkspaceWrap>
       </PolotnoContainer>
     </>
