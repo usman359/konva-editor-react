@@ -322,19 +322,22 @@ export const App = ({ store }) => {
       let node;
       while ((node = walker.nextNode())) {
         if (node.textContent) {
-          // Replace all instances of "elements" with "narrations" (case insensitive)
+          // Replace all instances of "elements" with "shapes" (case insensitive)
           if (node.textContent.toLowerCase().includes("elements")) {
-            node.textContent = node.textContent.replace(
-              /elements/gi,
-              "Narrations"
-            );
+            node.textContent = node.textContent.replace(/elements/gi, "Shapes");
           }
-          // Replace all instances of "element" with "narration" (case insensitive)
+          // Replace all instances of "element" with "shape" (case insensitive)
           if (node.textContent.toLowerCase().includes("element")) {
-            node.textContent = node.textContent.replace(
-              /element/gi,
-              "Narration"
-            );
+            node.textContent = node.textContent.replace(/element/gi, "Shape");
+          }
+          // Add supported formats text to upload section
+          if (node.textContent.includes("Upload your assets")) {
+            node.textContent = "Upload your assets (.jpg, .png, .gif, .svg)";
+          }
+          // Add supported formats text to font upload section
+          if (node.textContent.includes("Upload font")) {
+            // Don't modify the button text, we'll add separate text below it
+            return;
           }
         }
       }
@@ -898,6 +901,194 @@ export const App = ({ store }) => {
     });
 
     // Cleanup
+    return () => observer.disconnect();
+  }, []);
+
+  // Add font formats text below upload button
+  React.useEffect(() => {
+    const addFontFormatsText = () => {
+      // Find all upload font buttons
+      const uploadButtons = document.querySelectorAll("button");
+
+      uploadButtons.forEach((button) => {
+        if (button.textContent.includes("Upload font")) {
+          // Check if formats text already exists
+          const existingText =
+            button.parentElement.querySelector(".font-formats-text");
+          if (existingText) return;
+
+          // Create formats text element
+          const formatsText = document.createElement("div");
+          formatsText.className = "font-formats-text";
+          formatsText.textContent = "(.ttf, .otf, .woff, .woff2, .eot)";
+          formatsText.style.cssText =
+            "font-size: 12px; color: #666; margin-top: 4px; text-align: center;";
+
+          // Insert after the button
+          button.parentElement.insertBefore(formatsText, button.nextSibling);
+        }
+      });
+    };
+
+    // Run immediately and on DOM changes
+    addFontFormatsText();
+
+    const observer = new MutationObserver(() => {
+      addFontFormatsText();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Add file upload restrictions
+  React.useEffect(() => {
+    const restrictFileUploads = () => {
+      // Find all file input elements
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+
+      fileInputs.forEach((input) => {
+        // Set accept attribute to restrict file types in native file picker
+        // Check if this is a font upload input by looking for font-related context
+        const isFontInput =
+          // Check if input is near "Upload font" text
+          input.closest("div")?.textContent?.includes("Upload font") ||
+          // Check if input is in a font-related section
+          input.closest('[class*="font"]') ||
+          input.closest('[class*="typography"]') ||
+          // Check if there's a "Upload font" button nearby
+          document
+            .querySelector('button[class*="upload"]')
+            ?.textContent?.includes("Upload font") ||
+          // Check parent elements for font context
+          input
+            .closest("div")
+            ?.querySelector("button")
+            ?.textContent?.includes("Upload font");
+
+        if (isFontInput) {
+          // Font file formats
+          input.setAttribute(
+            "accept",
+            ".ttf,.otf,.woff,.woff2,.eot,font/ttf,font/otf,application/font-woff,application/font-woff2,application/vnd.ms-fontobject"
+          );
+          console.log("Font input detected, setting font accept attribute");
+        } else {
+          // Image file formats (default)
+          input.setAttribute(
+            "accept",
+            ".jpg,.jpeg,.png,.gif,.svg,image/jpeg,image/png,image/gif,image/svg+xml"
+          );
+          console.log("Image input detected, setting image accept attribute");
+        }
+
+        // Remove existing event listeners to avoid duplicates
+        input.removeEventListener("change", handleFileUpload);
+        input.addEventListener("change", handleFileUpload);
+      });
+    };
+
+    const handleFileUpload = (event) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      // Check if this is a font upload input
+      const isFontInput =
+        // Check if input is near "Upload font" text
+        event.target.closest("div")?.textContent?.includes("Upload font") ||
+        // Check if input is in a font-related section
+        event.target.closest('[class*="font"]') ||
+        event.target.closest('[class*="typography"]') ||
+        // Check if there's a "Upload font" button nearby
+        document
+          .querySelector('button[class*="upload"]')
+          ?.textContent?.includes("Upload font") ||
+        // Check parent elements for font context
+        event.target
+          .closest("div")
+          ?.querySelector("button")
+          ?.textContent?.includes("Upload font");
+
+      let supportedTypes, supportedExtensions, supportedFormatsText;
+
+      if (isFontInput) {
+        // Font file formats
+        supportedTypes = [
+          "font/ttf",
+          "font/otf",
+          "application/font-woff",
+          "application/font-woff2",
+          "application/vnd.ms-fontobject",
+        ];
+        supportedExtensions = [".ttf", ".otf", ".woff", ".woff2", ".eot"];
+        supportedFormatsText = ".ttf, .otf, .woff, .woff2, .eot";
+      } else {
+        // Image file formats (default)
+        supportedTypes = [
+          "image/jpeg",
+          "image/jpg",
+          "image/png",
+          "image/gif",
+          "image/svg+xml",
+        ];
+        supportedExtensions = [".jpg", ".jpeg", ".png", ".gif", ".svg"];
+        supportedFormatsText = ".jpg, .png, .gif, .svg";
+      }
+
+      const validFiles = [];
+      const invalidFiles = [];
+
+      Array.from(files).forEach((file) => {
+        const fileName = file.name.toLowerCase();
+        const fileExtension = fileName.substring(fileName.lastIndexOf("."));
+        const isValidType =
+          supportedTypes.includes(file.type) ||
+          supportedExtensions.includes(fileExtension);
+
+        if (isValidType) {
+          validFiles.push(file);
+        } else {
+          invalidFiles.push(file);
+        }
+      });
+
+      if (invalidFiles.length > 0) {
+        const invalidFileNames = invalidFiles.map((f) => f.name).join(", ");
+        const fileTypeText = isFontInput ? "font files" : "image files";
+        alert(
+          `The following files are not supported: ${invalidFileNames}\n\nSupported ${fileTypeText}: ${supportedFormatsText}`
+        );
+
+        // Clear the input to prevent upload
+        event.target.value = "";
+        return;
+      }
+
+      if (validFiles.length > 0) {
+        // Create a new FileList with only valid files
+        const dataTransfer = new DataTransfer();
+        validFiles.forEach((file) => dataTransfer.items.add(file));
+        event.target.files = dataTransfer.files;
+      }
+    };
+
+    // Run immediately and on any DOM changes
+    restrictFileUploads();
+
+    // Also run when new file inputs are added
+    const observer = new MutationObserver(() => {
+      restrictFileUploads();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
     return () => observer.disconnect();
   }, []);
 
