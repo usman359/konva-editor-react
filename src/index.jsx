@@ -322,13 +322,27 @@ export const App = ({ store }) => {
       let node;
       while ((node = walker.nextNode())) {
         if (node.textContent) {
-          // Replace all instances of "elements" with "shapes" (case insensitive)
-          if (node.textContent.toLowerCase().includes("elements")) {
-            node.textContent = node.textContent.replace(/elements/gi, "Shapes");
+          // Only replace "Narrations" tab text to "Elements", not other text
+          if (
+            node.textContent === "Narrations" &&
+            node.parentElement?.classList?.contains("bp5-tab")
+          ) {
+            node.textContent = "Elements";
           }
-          // Replace all instances of "element" with "shape" (case insensitive)
-          if (node.textContent.toLowerCase().includes("element")) {
-            node.textContent = node.textContent.replace(/element/gi, "Shape");
+          // Change "Elements on your active page:" back to "Narrations on your active page:"
+          if (node.textContent.includes("Elements on your active page:")) {
+            node.textContent = node.textContent.replace(
+              "Elements on your active page:",
+              "Narrations on your active page:"
+            );
+          }
+
+          // Change "No elements on your active page:" back to "No Narrations on your active page:"
+          if (node.textContent.includes("No elements on the page...")) {
+            node.textContent = node.textContent.replace(
+              "No elements on the page.",
+              "No Narrations on the page..."
+            );
           }
           // Add supported formats text to upload section
           if (node.textContent.includes("Upload your assets")) {
@@ -407,7 +421,11 @@ export const App = ({ store }) => {
               if (selectedElements && selectedElements.length > 0) {
                 const selectedElement = selectedElements[0];
                 selectedElement.set("name", newText);
-                console.log("Updated element name in store:", newText);
+                // Don't update the text property - keep original text on canvas
+                console.log(
+                  "Updated element name (narration) in store:",
+                  newText
+                );
               }
             } catch (error) {
               console.log("Could not update store:", error);
@@ -617,14 +635,12 @@ export const App = ({ store }) => {
                 if (selected) {
                   if (typeof selected.set === "function") {
                     selected.set({ name: newText });
-                    // For text elements, also set text so Layers reflects it
-                    try {
-                      selected.set({ text: newText });
-                    } catch (_) {}
+                    // Don't update the text property - keep original text on canvas
+                    // Only update the name (narration) for the Layers tab
                   } else {
-                    // fallback
+                    // fallback - only update name, not text
                     selected.name = newText;
-                    if ("text" in selected) selected.text = newText;
+                    // Don't update text property to keep original text on canvas
                   }
                 }
               } catch (e) {
