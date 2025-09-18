@@ -920,7 +920,11 @@ export const App = ({ store }) => {
       </div>
 
       <PolotnoContainer
-        style={{ width: "100vw", height: "100vh", marginLeft: "100px" }}
+        style={{
+          width: "calc(100vw - 100px)",
+          height: "100vh",
+          marginLeft: "100px",
+        }}
       >
         <SidePanelWrap>
           <CustomSidePanel store={store} />
