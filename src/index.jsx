@@ -15,7 +15,7 @@ import {
   Dialog,
   InputGroup,
 } from "@blueprintjs/core";
-import { Download, Plus, FolderOpen } from "@blueprintjs/icons";
+import { Download, Plus, FolderOpen, Edit } from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
 import "@blueprintjs/core/lib/css/blueprint.css";
@@ -206,6 +206,22 @@ const verticalPagesCSS = `
     justify-content: center !important;
     align-items: center !important;
   }
+
+  /* Slide numbers and names styling */
+  .polotno-page-container {
+    margin-bottom: 40px !important;
+    overflow: visible !important;
+  }
+
+  .slide-number-container {
+    position: absolute !important;
+    bottom: -25px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 10 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
 `;
 
 // Inject the CSS
@@ -263,8 +279,9 @@ const HierarchicalPagesNavigation = ({ store }) => {
     setIsCreateModalOpen(true);
   };
 
-  const handleCreateChapterClick = () => {
+  const handleCreateChapterClick = (moduleId) => {
     setCreateType("chapter");
+    setActiveModuleId(moduleId); // Set the target module ID
     setIsCreateModalOpen(true);
   };
 
@@ -529,7 +546,7 @@ const HierarchicalPagesNavigation = ({ store }) => {
         } catch (e) {}
       }
     } else if (createType === "chapter") {
-      // Save current chapter pages before creating new one
+      // Save current chapter pages before creating new one (if we're switching modules)
       try {
         const current = store.toJSON();
         const currentChapterKey = getChapterKey(
@@ -902,10 +919,6 @@ const HierarchicalPagesNavigation = ({ store }) => {
               minWidth: 0, // Allow flex item to shrink
             }}
             onClick={() => toggleModule(module.id)}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              handleEditModule(module.id);
-            }}
           >
             <FolderOpen
               size={12}
@@ -928,6 +941,39 @@ const HierarchicalPagesNavigation = ({ store }) => {
             >
               {module.isExpanded ? "▼" : "▶"}
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditModule(module.id);
+              }}
+              style={{
+                marginLeft: "6px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#666",
+                fontSize: "12px",
+                padding: "2px",
+                borderRadius: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "16px",
+                height: "16px",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = "#e1e5e9";
+                e.target.style.color = "#333";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = "transparent";
+                e.target.style.color = "#666";
+              }}
+              title="Edit module"
+            >
+              <Edit size={10} />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -988,10 +1034,6 @@ const HierarchicalPagesNavigation = ({ store }) => {
                           minWidth: 0,
                         }}
                         onClick={() => toggleChapter(module.id, chapter.id)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleEditChapter(module.id, chapter.id);
-                        }}
                       >
                         <FolderOpen
                           size={10}
@@ -1018,6 +1060,39 @@ const HierarchicalPagesNavigation = ({ store }) => {
                         >
                           {chapter.isExpanded ? "▼" : "▶"}
                         </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditChapter(module.id, chapter.id);
+                          }}
+                          style={{
+                            marginLeft: "4px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#666",
+                            fontSize: "10px",
+                            padding: "1px",
+                            borderRadius: "2px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "14px",
+                            height: "14px",
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = "#e9ecef";
+                            e.target.style.color = "#333";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = "transparent";
+                            e.target.style.color = "#666";
+                          }}
+                          title="Edit chapter"
+                        >
+                          <Edit size={8} />
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1101,7 +1176,7 @@ const HierarchicalPagesNavigation = ({ store }) => {
                     justifyContent: "center",
                     alignItems: "center",
                   }}
-                  onClick={handleCreateChapterClick}
+                  onClick={() => handleCreateChapterClick(module.id)}
                 >
                   Add Chapter
                 </Button>
@@ -1985,7 +2060,365 @@ export const App = ({ store }) => {
     return () => observer.disconnect();
   }, []);
 
-  // Remove page-number overlay customization; rely on default PagesTimeline UI
+  // Function to open slide name modal
+  const openSlideNameModal = (slideNumber, currentName, onSave) => {
+    // Create modal overlay
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      background: transparent;
+    `;
+
+    // Create modal content with Blueprint styling
+    const modalContent = document.createElement("div");
+    modalContent.style.cssText = `
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 0 0 1px rgba(16, 22, 26, 0.1), 0 4px 8px rgba(16, 22, 26, 0.2), 0 18px 46px 6px rgba(16, 22, 26, 0.2);
+      width: 400px;
+      max-width: 90vw;
+    `;
+
+    // Create header
+    const header = document.createElement("div");
+    header.style.cssText = `
+      padding: 20px 20px 0 20px;
+      border-bottom: 1px solid rgba(16, 22, 26, 0.15);
+    `;
+
+    const title = document.createElement("h4");
+    title.textContent = `Edit Slide ${slideNumber} Name`;
+    title.style.cssText = `
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: #182026;
+      line-height: 1.2;
+    `;
+
+    // Create body
+    const body = document.createElement("div");
+    body.style.cssText = `
+      padding: 20px;
+    `;
+
+    // Create label
+    const label = document.createElement("label");
+    label.textContent = "Slide Name:";
+    label.style.cssText = `
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #182026;
+      font-size: 14px;
+    `;
+
+    // Create input with Blueprint styling
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = currentName;
+    input.placeholder = "Enter slide name...";
+    input.style.cssText = `
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d3d8de;
+      border-radius: 3px;
+      font-size: 14px;
+      outline: none;
+      box-sizing: border-box;
+      background: #ffffff;
+      color: #182026;
+      transition: border-color 0.2s ease;
+    `;
+
+    // Add focus styling
+    input.addEventListener("focus", () => {
+      input.style.borderColor = "#137cbd";
+      input.style.boxShadow = "0 0 0 1px #137cbd";
+    });
+
+    input.addEventListener("blur", () => {
+      input.style.borderColor = "#d3d8de";
+      input.style.boxShadow = "none";
+    });
+
+    // Create footer
+    const footer = document.createElement("div");
+    footer.style.cssText = `
+      padding: 0 20px 20px 20px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    `;
+
+    // Create Cancel button with Blueprint styling
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText = `
+      background: #f5f8fa;
+      color: #182026;
+      border: 1px solid #d3d8de;
+      padding: 8px 16px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    `;
+
+    // Create Save button with Blueprint styling
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "Save";
+    saveBtn.style.cssText = `
+      background: #137cbd;
+      color: white;
+      border: 1px solid #137cbd;
+      padding: 8px 16px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    `;
+
+    // Add hover effects
+    cancelBtn.addEventListener("mouseenter", () => {
+      cancelBtn.style.background = "#ebf1f5";
+    });
+    cancelBtn.addEventListener("mouseleave", () => {
+      cancelBtn.style.background = "#f5f8fa";
+    });
+
+    saveBtn.addEventListener("mouseenter", () => {
+      saveBtn.style.background = "#106ba3";
+    });
+    saveBtn.addEventListener("mouseleave", () => {
+      saveBtn.style.background = "#137cbd";
+    });
+
+    // Assemble modal
+    header.appendChild(title);
+    body.appendChild(label);
+    body.appendChild(input);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+    modalContent.appendChild(header);
+    modalContent.appendChild(body);
+    modalContent.appendChild(footer);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+
+    // Focus input
+    input.focus();
+    input.select();
+
+    // Handle save
+    const saveEdit = () => {
+      const newName = input.value.trim() || `Slide ${slideNumber}`;
+      onSave(newName);
+      document.body.removeChild(modal);
+    };
+
+    // Handle cancel
+    const cancelEdit = () => {
+      document.body.removeChild(modal);
+    };
+
+    // Event listeners
+    saveBtn.addEventListener("click", saveEdit);
+    cancelBtn.addEventListener("click", cancelEdit);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) cancelEdit();
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveEdit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEdit();
+      }
+    });
+  };
+
+  // Add slide numbers and name editing functionality
+  React.useEffect(() => {
+    const addSlideNumbersAndNames = () => {
+      // Find all PagesTimeline components
+      const pagesTimelines = document.querySelectorAll(
+        ".polotno-pages-timeline"
+      );
+
+      pagesTimelines.forEach((timeline) => {
+        // Find page containers
+        const pageContainers = timeline.querySelectorAll(
+          ".polotno-page-container"
+        );
+
+        pageContainers.forEach((container, index) => {
+          // Check if slide name already exists for this container to avoid duplicates
+          if (container.querySelector(".slide-number-container")) {
+            return;
+          }
+          // Create slide number and name container
+          const slideContainer = document.createElement("div");
+          slideContainer.className = "slide-number-container";
+          slideContainer.style.cssText = `
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 80px;
+            max-width: 80px;
+            width: 80px;
+          `;
+
+          // Create slide name
+          const slideName = document.createElement("div");
+          slideName.textContent = `Slide ${index + 1}`;
+          slideName.style.cssText = `
+            font-size: 11px;
+            color: #333;
+            text-align: center;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 3px;
+            transition: background-color 0.2s ease;
+            line-height: 1.2;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          `;
+
+          // Add hover effects
+          slideName.addEventListener("mouseenter", () => {
+            slideName.style.backgroundColor = "rgba(0, 122, 204, 0.1)";
+          });
+          slideName.addEventListener("mouseleave", () => {
+            slideName.style.backgroundColor = "transparent";
+          });
+
+          // Add click handlers for editing
+          const editSlideName = () => {
+            const currentName = slideName.textContent;
+            openSlideNameModal(index + 1, currentName, (newName) => {
+              slideName.textContent = newName;
+
+              // Save to localStorage
+              try {
+                const savedNames = JSON.parse(
+                  localStorage.getItem("polotno-demo-page-names") || "{}"
+                );
+                savedNames[`slide-${index}`] = newName;
+                localStorage.setItem(
+                  "polotno-demo-page-names",
+                  JSON.stringify(savedNames)
+                );
+              } catch (e) {
+                console.error("Error saving slide name:", e);
+              }
+            });
+          };
+
+          slideName.addEventListener("click", editSlideName);
+
+          // Load saved name from localStorage
+          try {
+            const savedNames = JSON.parse(
+              localStorage.getItem("polotno-demo-page-names") || "{}"
+            );
+            const savedName = savedNames[`slide-${index}`];
+            if (savedName) {
+              slideName.textContent = savedName;
+            }
+          } catch (e) {
+            console.error("Error loading slide name:", e);
+          }
+
+          // Assemble the container
+          slideContainer.appendChild(slideName);
+
+          // Add to page container
+          container.style.position = "relative";
+          container.appendChild(slideContainer);
+        });
+      });
+    };
+
+    // Run immediately
+    addSlideNumbersAndNames();
+
+    // Set up observer to watch for new page thumbnails
+    const observer = new MutationObserver((mutations) => {
+      let shouldUpdate = false;
+
+      mutations.forEach((mutation) => {
+        // Check if new page containers were added
+        if (mutation.type === "childList") {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check if the added node is a page container or contains page containers
+              if (
+                node.classList?.contains("polotno-page-container") ||
+                node.querySelector?.(".polotno-page-container")
+              ) {
+                shouldUpdate = true;
+              }
+            }
+          });
+        }
+      });
+
+      if (shouldUpdate) {
+        // Add a small delay to ensure DOM is fully updated
+        setTimeout(() => {
+          addSlideNumbersAndNames();
+        }, 100);
+      }
+    });
+
+    // Observe the pages timeline container specifically
+    const pagesTimelineContainer =
+      document.querySelector(".polotno-pages-timeline") || document.body;
+    observer.observe(pagesTimelineContainer, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Also listen to store changes for immediate updates
+    const unsubscribe = store.on("change", () => {
+      // Add a small delay to ensure DOM is updated
+      setTimeout(() => {
+        addSlideNumbersAndNames();
+      }, 50);
+    });
+
+    return () => {
+      observer.disconnect();
+      unsubscribe();
+    };
+  }, []);
 
   // Specifically target and hide "Pages" text in the pages timeline
   React.useEffect(() => {
@@ -2360,7 +2793,7 @@ export const App = ({ store }) => {
           position: "fixed",
           top: "0",
           left: "0",
-          width: "160px",
+          width: "200px",
           height: "100vh",
           zIndex: "1000",
           backgroundColor: "#f0f0f0",
@@ -2372,9 +2805,9 @@ export const App = ({ store }) => {
 
       <PolotnoContainer
         style={{
-          width: "calc(100vw - 160px)",
+          width: "calc(100vw - 200px)",
           height: "100vh",
-          marginLeft: "160px",
+          marginLeft: "200px",
         }}
       >
         <SidePanelWrap>
