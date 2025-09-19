@@ -827,44 +827,9 @@ const HierarchicalPagesNavigation = ({ store }) => {
     }
   }, [chapterPagesRef.current]);
 
-  // Save current module's pages whenever the store changes
-  React.useEffect(() => {
-    const saveCurrentModulePages = () => {
-      try {
-        const current = store.toJSON();
-        modulePagesRef.current[activeModuleId] = current.pages || [];
-        localStorage.setItem(
-          "polotno-demo-module-pages",
-          JSON.stringify(modulePagesRef.current)
-        );
-        console.log(
-          "Saved current module pages due to store change:",
-          activeModuleId,
-          current.pages
-        );
-      } catch (e) {
-        console.error("Error saving current module pages:", e);
-      }
-    };
-
-    // Save immediately
-    saveCurrentModulePages();
-
-    // Listen for store changes
-    if (store.on) {
-      store.on("change", saveCurrentModulePages);
-      store.on("update", saveCurrentModulePages);
-      store.on("selection:change", saveCurrentModulePages);
-    }
-
-    return () => {
-      if (store.off) {
-        store.off("change", saveCurrentModulePages);
-        store.off("update", saveCurrentModulePages);
-        store.off("selection:change", saveCurrentModulePages);
-      }
-    };
-  }, [store, activeModuleId]);
+  // Note: Removed all automatic saving via useEffect
+  // This was causing cross-module contamination. Page saving now only happens
+  // during explicit module/chapter switching operations using refs.
 
   // Initialize snapshot for the first module on mount
   React.useEffect(() => {
