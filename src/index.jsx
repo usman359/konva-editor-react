@@ -6,8 +6,16 @@ import { PagesTimeline } from "polotno/pages-timeline";
 import { ZoomButtons } from "polotno/toolbar/zoom-buttons";
 import { SidePanel } from "polotno/side-panel";
 import { Workspace } from "polotno/canvas/workspace";
-import { Button, Menu, MenuItem, Popover, Position } from "@blueprintjs/core";
-import { Download } from "@blueprintjs/icons";
+import {
+  Button,
+  Menu,
+  MenuItem,
+  Popover,
+  Position,
+  Dialog,
+  InputGroup,
+} from "@blueprintjs/core";
+import { Download, Plus, FolderOpen, Document } from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
 import "@blueprintjs/core/lib/css/blueprint.css";
@@ -103,6 +111,22 @@ const verticalPagesCSS = `
     width: 100% !important;
     object-fit: contain !important;
   }
+  
+  /* Hide only the "Pages" text, not the entire navbar or buttons */
+  .polotno-pages-timeline *[aria-label*="Pages"],
+  .polotno-pages-timeline *[title*="Pages"],
+  .polotno-pages-timeline *[aria-label*="pages"],
+  .polotno-pages-timeline *[title*="pages"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* Hide text elements that contain only "Pages" */
+  .polotno-pages-timeline .bp5-text:contains("Pages"),
+  .polotno-pages-timeline .bp4-text:contains("Pages") {
+    display: none !important;
+    visibility: hidden !important;
+  }
 `;
 
 // Inject the CSS
@@ -116,7 +140,450 @@ const store = createStore({
   // but it will be good if you can keep it for Polotno project support
   showCredit: true,
 });
-store.addPage();
+
+// Custom Hierarchical Pages Navigation Component
+const HierarchicalPagesNavigation = ({ store }) => {
+  const [modules, setModules] = React.useState([
+    {
+      id: 1,
+      name: "Module 1",
+      chapters: [],
+      isExpanded: true,
+    },
+  ]);
+  const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
+  const [createType, setCreateType] = React.useState("module");
+  const [newItemName, setNewItemName] = React.useState("");
+  const [activeModuleId, setActiveModuleId] = React.useState(1);
+  const [editingModuleId, setEditingModuleId] = React.useState(null);
+  // Per-module pages snapshots while keeping ONE Polotno store for default behavior
+  const modulePagesRef = React.useRef({});
+
+  const handleCreateClick = () => {
+    setEditingModuleId(null);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleEditModule = (moduleId) => {
+    const module = modules.find((m) => m.id === moduleId);
+    if (module) {
+      setEditingModuleId(moduleId);
+      setNewItemName(module.name);
+      setIsCreateModalOpen(true);
+    }
+  };
+
+  const handleCreateItem = () => {
+    if (!newItemName.trim()) return;
+
+    if (createType === "module") {
+      if (editingModuleId) {
+        // Editing existing module
+        setModules(
+          modules.map((module) =>
+            module.id === editingModuleId
+              ? { ...module, name: newItemName.trim() }
+              : module
+          )
+        );
+        setEditingModuleId(null);
+      } else {
+        // Creating new module
+        // Save current module pages before switching
+        try {
+          const current = store.toJSON();
+          modulePagesRef.current[activeModuleId] = current.pages || [];
+          // Trigger localStorage save for module pages
+          localStorage.setItem(
+            "polotno-demo-module-pages",
+            JSON.stringify(modulePagesRef.current)
+          );
+        } catch (e) {}
+
+        const newModule = {
+          id: Date.now(),
+          name: newItemName.trim(),
+          chapters: [],
+          isExpanded: true,
+        };
+
+        setModules([...modules, newModule]);
+        // Switch to the new module and start with empty pages
+        setActiveModuleId(newModule.id);
+        try {
+          const base = store.toJSON();
+          store.loadJSON({ ...base, pages: [] });
+        } catch (e) {}
+      }
+    }
+    // TODO: Add chapter and slide creation logic later
+
+    setNewItemName("");
+    setIsCreateModalOpen(false);
+  };
+
+  const toggleModule = (moduleId) => {
+    // Save current module pages
+    try {
+      const current = store.toJSON();
+      modulePagesRef.current[activeModuleId] = current.pages || [];
+      // Trigger localStorage save for module pages
+      localStorage.setItem(
+        "polotno-demo-module-pages",
+        JSON.stringify(modulePagesRef.current)
+      );
+    } catch (e) {}
+
+    setModules(
+      modules.map((module) =>
+        module.id === moduleId
+          ? { ...module, isExpanded: !module.isExpanded }
+          : module
+      )
+    );
+    // Set as active module and load its pages snapshot (or empty)
+    setActiveModuleId(moduleId);
+    try {
+      const base = store.toJSON();
+      const pages = modulePagesRef.current[moduleId] || [];
+      store.loadJSON({ ...base, pages });
+    } catch (e) {}
+
+    // Hide Pages text after module expansion
+    setTimeout(() => {
+      const pagesTimelines = document.querySelectorAll(
+        ".polotno-pages-timeline"
+      );
+      pagesTimelines.forEach((timeline) => {
+        // Only hide elements that contain "Pages" text, preserve buttons and functionality
+        const allElements = timeline.querySelectorAll("*");
+        allElements.forEach((element) => {
+          // Check if the element contains only "Pages" text (not buttons with icons)
+          if (
+            element.textContent &&
+            element.textContent.trim() === "Pages" &&
+            !element.querySelector("svg") && // Don't hide elements with icons (like plus button)
+            !element.classList.contains("bp5-button") &&
+            !element.classList.contains("bp4-button")
+          ) {
+            element.style.display = "none";
+            element.style.visibility = "hidden";
+          }
+        });
+      });
+    }, 100);
+  };
+
+  // Load modules from localStorage on mount
+  React.useEffect(() => {
+    try {
+      const savedModules = localStorage.getItem("polotno-demo-modules");
+      const savedModulePages = localStorage.getItem(
+        "polotno-demo-module-pages"
+      );
+      const savedActiveModuleId = localStorage.getItem(
+        "polotno-demo-active-module-id"
+      );
+
+      if (savedModules) {
+        const parsedModules = JSON.parse(savedModules);
+        setModules(parsedModules);
+        console.log("Loaded modules from localStorage:", parsedModules);
+      }
+
+      if (savedModulePages) {
+        const parsedModulePages = JSON.parse(savedModulePages);
+        modulePagesRef.current = parsedModulePages;
+        console.log(
+          "Loaded module pages from localStorage:",
+          parsedModulePages
+        );
+      }
+
+      if (savedActiveModuleId) {
+        const parsedActiveModuleId = parseInt(savedActiveModuleId);
+        setActiveModuleId(parsedActiveModuleId);
+        console.log(
+          "Loaded active module ID from localStorage:",
+          parsedActiveModuleId
+        );
+      }
+    } catch (error) {
+      console.error("Error loading modules from localStorage:", error);
+    }
+  }, []);
+
+  // Save modules to localStorage whenever modules change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("polotno-demo-modules", JSON.stringify(modules));
+      console.log("Saved modules to localStorage:", modules);
+    } catch (error) {
+      console.error("Error saving modules to localStorage:", error);
+    }
+  }, [modules]);
+
+  // Save active module ID to localStorage whenever it changes
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        "polotno-demo-active-module-id",
+        activeModuleId.toString()
+      );
+      console.log("Saved active module ID to localStorage:", activeModuleId);
+    } catch (error) {
+      console.error("Error saving active module ID to localStorage:", error);
+    }
+  }, [activeModuleId]);
+
+  // Save module pages to localStorage whenever they change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        "polotno-demo-module-pages",
+        JSON.stringify(modulePagesRef.current)
+      );
+      console.log(
+        "Saved module pages to localStorage:",
+        modulePagesRef.current
+      );
+    } catch (error) {
+      console.error("Error saving module pages to localStorage:", error);
+    }
+  }, [modulePagesRef.current]);
+
+  // Save current module's pages whenever the store changes
+  React.useEffect(() => {
+    const saveCurrentModulePages = () => {
+      try {
+        const current = store.toJSON();
+        modulePagesRef.current[activeModuleId] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-module-pages",
+          JSON.stringify(modulePagesRef.current)
+        );
+        console.log(
+          "Saved current module pages due to store change:",
+          activeModuleId,
+          current.pages
+        );
+      } catch (e) {
+        console.error("Error saving current module pages:", e);
+      }
+    };
+
+    // Save immediately
+    saveCurrentModulePages();
+
+    // Listen for store changes
+    if (store.on) {
+      store.on("change", saveCurrentModulePages);
+      store.on("update", saveCurrentModulePages);
+      store.on("selection:change", saveCurrentModulePages);
+    }
+
+    return () => {
+      if (store.off) {
+        store.off("change", saveCurrentModulePages);
+        store.off("update", saveCurrentModulePages);
+        store.off("selection:change", saveCurrentModulePages);
+      }
+    };
+  }, [store, activeModuleId]);
+
+  // Initialize snapshot for the first module on mount
+  React.useEffect(() => {
+    try {
+      const json = store.toJSON();
+      if (!modulePagesRef.current[activeModuleId]) {
+        modulePagesRef.current[activeModuleId] = json.pages || [];
+      }
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        padding: "10px 5px",
+        backgroundColor: "#f0f0f0",
+        border: "1px solid #ccc",
+      }}
+    >
+      {/* Module Headers */}
+      {modules.map((module) => (
+        <div key={module.id} style={{ marginBottom: "10px" }}>
+          {/* Module Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "8px 12px",
+              backgroundColor: "#e1e5e9",
+              borderRadius: "4px",
+              cursor: "pointer",
+              marginBottom: "5px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              color: "#333",
+              minWidth: 0, // Allow flex item to shrink
+            }}
+            onClick={() => toggleModule(module.id)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleEditModule(module.id);
+            }}
+          >
+            <FolderOpen
+              size={12}
+              style={{ marginRight: "6px", flexShrink: 0 }}
+            />
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={module.name} // Show full name on hover
+            >
+              {module.name}
+            </span>
+            <span
+              style={{ marginLeft: "6px", fontSize: "10px", flexShrink: 0 }}
+            >
+              {module.isExpanded ? "▼" : "▶"}
+            </span>
+          </div>
+
+          {/* Pages under this module - render default PagesTimeline ONLY for active module using ONE store */}
+          {module.isExpanded && module.id === activeModuleId && (
+            <div style={{ marginLeft: "10px" }}>
+              <div
+                style={{
+                  overflow: "hidden",
+                  position: "relative",
+                }}
+              >
+                <PagesTimeline store={store} defaultOpened={true} />
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add Module Button */}
+      <Button
+        icon={<Plus />}
+        minimal
+        style={{
+          margin: "10px auto",
+          width: "60px",
+          height: "30px",
+          fontSize: "12px",
+          whiteSpace: "nowrap",
+        }}
+        onClick={handleCreateClick}
+      >
+        Add Module
+      </Button>
+
+      {/* Create/Edit Modal */}
+      <Dialog
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingModuleId(null);
+          setNewItemName("");
+        }}
+        title={editingModuleId ? "Edit Module" : "Create New Item"}
+        style={{ width: "400px" }}
+      >
+        <div style={{ padding: "20px" }}>
+          <div style={{ marginBottom: "15px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "5px",
+                fontWeight: "bold",
+              }}
+            >
+              What would you like to create?
+            </label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <Button
+                text="Module"
+                intent={createType === "module" ? "primary" : "none"}
+                onClick={() => setCreateType("module")}
+                small
+              />
+              <Button
+                text="Chapter"
+                intent={createType === "chapter" ? "primary" : "none"}
+                onClick={() => setCreateType("chapter")}
+                small
+                disabled
+              />
+              <Button
+                text="Slide"
+                intent={createType === "slide" ? "primary" : "none"}
+                onClick={() => setCreateType("slide")}
+                small
+                disabled
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "5px",
+                fontWeight: "bold",
+              }}
+            >
+              {createType === "module"
+                ? "Module"
+                : createType === "chapter"
+                ? "Chapter"
+                : "Slide"}{" "}
+              Name:
+            </label>
+            <InputGroup
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              placeholder={`Enter ${createType} name...`}
+              onKeyPress={(e) => e.key === "Enter" && handleCreateItem()}
+            />
+          </div>
+
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
+          >
+            <Button
+              text="Cancel"
+              onClick={() => {
+                setIsCreateModalOpen(false);
+                setEditingModuleId(null);
+                setNewItemName("");
+              }}
+            />
+            <Button
+              text={editingModuleId ? "Save Changes" : "Create"}
+              intent="primary"
+              onClick={handleCreateItem}
+              disabled={!newItemName.trim()}
+            />
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  );
+};
 
 // Custom Side Panel that includes both default panel and narration panel
 const CustomSidePanel = ({ store }) => {
@@ -706,158 +1173,96 @@ export const App = ({ store }) => {
     return () => observer.disconnect();
   }, []);
 
-  // Add page numbers below thumbnails
+  // Remove page-number overlay customization; rely on default PagesTimeline UI
+
+  // Specifically target and hide "Pages" text in the pages timeline
   React.useEffect(() => {
-    const addPageNumbers = () => {
-      // Find the pages container
-      const pagesContainer = document.querySelector(".polotno-pages-timeline");
-      if (!pagesContainer) {
-        console.log("Pages container not found");
-        return;
-      }
-
-      console.log("Pages container found:", pagesContainer);
-      console.log("All children:", pagesContainer.children);
-
-      // Look specifically for page containers
-      const pageThumbnails = pagesContainer.querySelectorAll(
-        ".polotno-page-container"
+    const hidePagesText = () => {
+      // Find all PagesTimeline components (there might be multiple in different modules)
+      const pagesTimelines = document.querySelectorAll(
+        ".polotno-pages-timeline"
       );
-      console.log("Page containers found:", pageThumbnails.length);
 
-      pageThumbnails.forEach((thumbnail, index) => {
-        console.log(`Processing thumbnail ${index + 1}:`, thumbnail);
-
-        // Find the parent container of this thumbnail
-        const container = thumbnail.closest("div");
-        if (!container) {
-          console.log("No container found for thumbnail");
-          return;
-        }
-
-        console.log("Container found:", container);
-
-        // Check if number already exists
-        if (container.querySelector(".page-number")) {
-          console.log("Number already exists, skipping");
-          return;
-        }
-
-        // Create editable number element
-        const number = document.createElement("div");
-        number.className = "page-number";
-        number.textContent = (index + 1).toString();
-        number.style.cssText =
-          "position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #666; text-align: center; background: transparent; padding: 2px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; min-width: 20px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
-
-        // Make it editable on click
-        number.addEventListener("click", () => {
-          // Create modal overlay
-          const modal = document.createElement("div");
-          modal.style.cssText =
-            "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;";
-
-          // Create modal content
-          const modalContent = document.createElement("div");
-          modalContent.style.cssText =
-            "background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); min-width: 300px;";
-
-          // Create title
-          const title = document.createElement("h3");
-          title.textContent = "Edit Page Name";
-          title.style.cssText =
-            "margin: 0 0 15px 0; font-size: 16px; color: #333;";
-
-          // Create input
-          const input = document.createElement("input");
-          input.type = "text";
-          input.value = number.textContent;
-          input.placeholder = "Enter page name...";
-          input.style.cssText =
-            "width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; box-sizing: border-box;";
-
-          // Create buttons container
-          const buttonsContainer = document.createElement("div");
-          buttonsContainer.style.cssText =
-            "display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;";
-
-          // Create Save button
-          const saveBtn = document.createElement("button");
-          saveBtn.textContent = "Save";
-          saveBtn.style.cssText =
-            "background: #007acc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
-
-          // Create Cancel button
-          const cancelBtn = document.createElement("button");
-          cancelBtn.textContent = "Cancel";
-          cancelBtn.style.cssText =
-            "background: #f5f5f5; color: #333; border: 1px solid #ddd; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;";
-
-          // Assemble modal
-          buttonsContainer.appendChild(cancelBtn);
-          buttonsContainer.appendChild(saveBtn);
-          modalContent.appendChild(title);
-          modalContent.appendChild(input);
-          modalContent.appendChild(buttonsContainer);
-          modal.appendChild(modalContent);
-          document.body.appendChild(modal);
-
-          // Focus input
-          input.focus();
-          input.select();
-
-          // Handle save
-          const saveEdit = () => {
-            const newText = input.value.trim() || (index + 1).toString();
-            number.textContent = newText;
-            number.title = newText; // Show full text on hover
-            document.body.removeChild(modal);
-          };
-
-          // Handle cancel
-          const cancelEdit = () => {
-            document.body.removeChild(modal);
-          };
-
-          // Event listeners
-          saveBtn.addEventListener("click", saveEdit);
-          cancelBtn.addEventListener("click", cancelEdit);
-          modal.addEventListener("click", (e) => {
-            if (e.target === modal) cancelEdit();
-          });
-
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              saveEdit();
-            } else if (e.key === "Escape") {
-              cancelEdit();
-            }
-          });
+      pagesTimelines.forEach((pagesTimeline) => {
+        // Hide only elements that contain "Pages" text, not entire navbars or buttons
+        const pagesElements = pagesTimeline.querySelectorAll(
+          '*[aria-label*="Pages"], *[aria-label*="pages"], ' +
+            '*[title*="Pages"], *[title*="pages"]'
+        );
+        pagesElements.forEach((element) => {
+          element.style.display = "none";
+          element.style.visibility = "hidden";
         });
 
-        // Add to container
-        container.style.position = "relative";
-        container.appendChild(number);
+        // Hide any text elements that contain "Pages" but preserve buttons and functionality
+        const allElements = pagesTimeline.querySelectorAll("*");
+        allElements.forEach((element) => {
+          // Check if the element itself contains "Pages" text but is not a button
+          if (
+            element.textContent &&
+            element.textContent.trim() === "Pages" &&
+            !element.querySelector("svg") && // Don't hide elements with icons (like plus button)
+            !element.classList.contains("bp5-button") &&
+            !element.classList.contains("bp4-button") &&
+            !element.closest("button")
+          ) {
+            // Don't hide if it's inside a button
+            element.style.display = "none";
+            element.style.visibility = "hidden";
+          }
 
-        console.log(`Added number ${index + 1} to container:`, container);
+          // Check all child text nodes
+          const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          let textNode;
+          while ((textNode = walker.nextNode())) {
+            if (
+              textNode.textContent &&
+              textNode.textContent.trim() === "Pages"
+            ) {
+              const parent = textNode.parentElement;
+              // Only hide if parent is not a button and doesn't contain icons
+              if (
+                parent &&
+                !parent.classList.contains("bp5-button") &&
+                !parent.classList.contains("bp4-button") &&
+                !parent.closest("button") &&
+                !parent.querySelector("svg")
+              ) {
+                parent.style.display = "none";
+                parent.style.visibility = "hidden";
+              }
+            }
+          }
+        });
       });
     };
 
-    // Run immediately and set up observer for new pages
-    addPageNumbers();
+    // Run immediately
+    hidePagesText();
 
-    // Set up observer to watch for new pages
+    // Set up a more frequent observer to catch the text as soon as it appears
     const observer = new MutationObserver(() => {
-      addPageNumbers();
+      hidePagesText();
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
+      characterData: true,
     });
 
-    return () => observer.disconnect();
+    // Also run periodically as a backup
+    const interval = setInterval(hidePagesText, 100);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
   }, []);
 
   // Ensure pages container stays open
@@ -882,14 +1287,41 @@ export const App = ({ store }) => {
         button.style.visibility = "hidden";
       });
 
-      // Hide any text containing "Pages"
+      // Hide any text containing "Pages" - more comprehensive approach
       const pagesText = document.querySelectorAll(
         '.polotno-pages-timeline *[aria-label*="pages"], ' +
-          '.polotno-pages-timeline *[title*="pages"]'
+          '.polotno-pages-timeline *[title*="pages"], ' +
+          '.polotno-pages-timeline *[aria-label*="Pages"], ' +
+          '.polotno-pages-timeline *[title*="Pages"]'
       );
       pagesText.forEach((element) => {
         element.style.display = "none";
         element.style.visibility = "hidden";
+      });
+
+      // Also hide any text nodes or elements that contain "Pages" text
+      const allElements = document.querySelectorAll(
+        ".polotno-pages-timeline *"
+      );
+      allElements.forEach((element) => {
+        if (element.textContent && element.textContent.trim() === "Pages") {
+          element.style.display = "none";
+          element.style.visibility = "hidden";
+        }
+        // Also check child text nodes
+        const walker = document.createTreeWalker(
+          element,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
+        let textNode;
+        while ((textNode = walker.nextNode())) {
+          if (textNode.textContent && textNode.textContent.trim() === "Pages") {
+            textNode.parentElement.style.display = "none";
+            textNode.parentElement.style.visibility = "hidden";
+          }
+        }
       });
 
       // Ensure the pages container is visible
@@ -1110,27 +1542,27 @@ export const App = ({ store }) => {
 
   return (
     <>
-      {/* Pages Timeline - Top Left Position */}
+      {/* Hierarchical Pages Navigation - Top Left Position */}
       <div
         style={{
           position: "fixed",
           top: "0",
           left: "0",
-          width: "100px",
+          width: "120px",
           height: "100vh",
           zIndex: "1000",
           backgroundColor: "#f0f0f0",
           border: "1px solid #ccc",
         }}
       >
-        <PagesTimeline store={store} defaultOpened={true} />
+        <HierarchicalPagesNavigation store={store} />
       </div>
 
       <PolotnoContainer
         style={{
-          width: "calc(100vw - 100px)",
+          width: "calc(100vw - 120px)",
           height: "100vh",
-          marginLeft: "100px",
+          marginLeft: "120px",
         }}
       >
         <SidePanelWrap>
