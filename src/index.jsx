@@ -15,7 +15,7 @@ import {
   Dialog,
   InputGroup,
 } from "@blueprintjs/core";
-import { Download, Plus, FolderOpen, Document } from "@blueprintjs/icons";
+import { Download, Plus, FolderOpen } from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
 import "@blueprintjs/core/lib/css/blueprint.css";
@@ -38,6 +38,57 @@ const verticalPagesCSS = `
     justify-content: flex-start !important;
     box-sizing: border-box !important;
     position: relative !important;
+  }
+  
+  /* Center the pages thumbnails horizontally */
+  .polotno-pages-timeline .bp5-navbar-group > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+  }
+  
+  /* Center individual page thumbnails */
+  .polotno-pages-timeline .polotno-page-container {
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  
+  /* Center the plus button in pages timeline */
+  .polotno-pages-timeline .bp5-button {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block !important;
+  }
+  
+  /* Center any button or icon in the pages timeline */
+  .polotno-pages-timeline .bp5-button,
+  .polotno-pages-timeline button {
+    margin: 0 45px !important;
+    display: block !important;
+  }
+  
+  /* Specifically target the plus button after page thumbnails */
+  .polotno-pages-timeline .bp5-button[aria-label*="add"],
+  .polotno-pages-timeline .bp5-button[aria-label*="Add"],
+  .polotno-pages-timeline .bp5-button[title*="add"],
+  .polotno-pages-timeline .bp5-button[title*="Add"] {
+    margin: 10px auto !important;
+    display: block !important;
+    width: 60px !important;
+    height: 60px !important;
+  }
+  
+  /* Remove focus styling for plus button in pages timeline */
+  .polotno-pages-timeline .bp5-button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  /* Center the plus icon within the button */
+  .polotno-pages-timeline .bp5-button svg {
+    margin: 0 auto !important;
   }
   
   /* Force all nested elements to be vertical but NOT take full height */
@@ -95,18 +146,18 @@ const verticalPagesCSS = `
   
   /* Keep individual page thumbnails at their original size */
   .polotno-pages-timeline .polotno-page-container {
-    height: 60px !important;
-    min-height: 60px !important;
+    height: 80px !important;
+    min-height: 80px !important;
     max-height: none !important;
     flex: none !important;
-    width: 60px !important;
+    width: 80px !important;
     margin-bottom: 20px !important;
   }
   
   /* Keep page thumbnail images at original size */
   .polotno-pages-timeline .polotno-page-container img {
-    height: 60px !important;
-    min-height: 60px !important;
+    height: 80px !important;
+    min-height: 80px !important;
     max-height: none !important;
     width: 100% !important;
     object-fit: contain !important;
@@ -126,6 +177,34 @@ const verticalPagesCSS = `
   .polotno-pages-timeline .bp4-text:contains("Pages") {
     display: none !important;
     visibility: hidden !important;
+  }
+  
+  /* Fix Add Module button focus outline */
+  .bp5-button:focus {
+    outline: 2px solid #137cbd !important;
+    outline-offset: 2px !important;
+  }
+  
+  /* Remove focus styling for the add module button */
+  .bp5-button[data-module-button="true"]:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  
+  /* Force centering for the add module button */
+  .bp5-button[data-module-button="true"] {
+    margin: 0 auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  /* Force centering for the add chapter button */
+  .bp5-button[data-chapter-button="true"] {
+    margin: 0 auto !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
   }
 `;
 
@@ -147,7 +226,14 @@ const HierarchicalPagesNavigation = ({ store }) => {
     {
       id: 1,
       name: "Module 1",
-      chapters: [],
+      chapters: [
+        {
+          id: 1,
+          name: "Chapter 1",
+          pages: [],
+          isExpanded: true,
+        },
+      ],
       isExpanded: true,
     },
   ]);
@@ -155,13 +241,46 @@ const HierarchicalPagesNavigation = ({ store }) => {
   const [createType, setCreateType] = React.useState("module");
   const [newItemName, setNewItemName] = React.useState("");
   const [activeModuleId, setActiveModuleId] = React.useState(1);
+  const [activeChapterId, setActiveChapterId] = React.useState(1);
   const [editingModuleId, setEditingModuleId] = React.useState(null);
+  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+  const [moduleToDelete, setModuleToDelete] = React.useState(null);
+  const [showChapterOption, setShowChapterOption] = React.useState(false);
+  const [chapterName, setChapterName] = React.useState("");
+  const [editingChapterId, setEditingChapterId] = React.useState(null);
+  const [chapterToDelete, setChapterToDelete] = React.useState(null);
+  const [deleteChapterModalOpen, setDeleteChapterModalOpen] =
+    React.useState(false);
+  const [editChapterModalOpen, setEditChapterModalOpen] = React.useState(false);
   // Per-module pages snapshots while keeping ONE Polotno store for default behavior
   const modulePagesRef = React.useRef({});
+  // Per-chapter pages snapshots - using moduleId-chapterId as key
+  const chapterPagesRef = React.useRef({});
 
   const handleCreateClick = () => {
     setEditingModuleId(null);
+    setCreateType("module");
     setIsCreateModalOpen(true);
+  };
+
+  const handleCreateChapterClick = () => {
+    setCreateType("chapter");
+    setIsCreateModalOpen(true);
+  };
+
+  // Helper function to get chapter key
+  const getChapterKey = (moduleId, chapterId) => `${moduleId}-${chapterId}`;
+
+  // Helper function to load chapter pages
+  const loadChapterPages = (moduleId, chapterId) => {
+    try {
+      const chapterKey = getChapterKey(moduleId, chapterId);
+      const pages = chapterPagesRef.current[chapterKey] || [];
+      const base = store.toJSON();
+      store.loadJSON({ ...base, pages });
+    } catch (e) {
+      console.error("Error loading chapter pages:", e);
+    }
   };
 
   const handleEditModule = (moduleId) => {
@@ -170,6 +289,191 @@ const HierarchicalPagesNavigation = ({ store }) => {
       setEditingModuleId(moduleId);
       setNewItemName(module.name);
       setIsCreateModalOpen(true);
+    }
+  };
+
+  const handleDeleteModule = (moduleId) => {
+    if (modules.length <= 1) {
+      alert("Cannot delete the last module. At least one module must exist.");
+      return;
+    }
+
+    // Open custom delete confirmation modal
+    setModuleToDelete(moduleId);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDeleteModule = () => {
+    if (!moduleToDelete) return;
+
+    // Save current module pages before deletion
+    try {
+      const current = store.toJSON();
+      modulePagesRef.current[activeModuleId] = current.pages || [];
+      localStorage.setItem(
+        "polotno-demo-module-pages",
+        JSON.stringify(modulePagesRef.current)
+      );
+    } catch (e) {}
+
+    // Remove module from state
+    const updatedModules = modules.filter((m) => m.id !== moduleToDelete);
+    setModules(updatedModules);
+
+    // If we're deleting the active module, switch to the first remaining module
+    if (activeModuleId === moduleToDelete) {
+      const newActiveModule = updatedModules[0];
+      setActiveModuleId(newActiveModule.id);
+
+      // Load the new active module's pages
+      try {
+        const base = store.toJSON();
+        const pages = modulePagesRef.current[newActiveModule.id] || [];
+        store.loadJSON({ ...base, pages });
+      } catch (e) {}
+    }
+
+    // Clean up module pages from localStorage
+    try {
+      delete modulePagesRef.current[moduleToDelete];
+      localStorage.setItem(
+        "polotno-demo-module-pages",
+        JSON.stringify(modulePagesRef.current)
+      );
+    } catch (e) {}
+
+    // Close modal and reset state
+    setDeleteModalOpen(false);
+    setModuleToDelete(null);
+  };
+
+  const cancelDeleteModule = () => {
+    setDeleteModalOpen(false);
+    setModuleToDelete(null);
+  };
+
+  const handleEditChapter = (moduleId, chapterId) => {
+    const module = modules.find((m) => m.id === moduleId);
+    const chapter = module?.chapters?.find((c) => c.id === chapterId);
+    if (chapter) {
+      setEditingChapterId(chapterId);
+      setChapterName(chapter.name);
+      setEditChapterModalOpen(true);
+    }
+  };
+
+  const handleDeleteChapter = (moduleId, chapterId) => {
+    const module = modules.find((m) => m.id === moduleId);
+    if (module?.chapters?.length <= 1) {
+      alert("Cannot delete the last chapter. At least one chapter must exist.");
+      return;
+    }
+    setChapterToDelete({ moduleId, chapterId });
+    setDeleteChapterModalOpen(true);
+  };
+
+  const confirmDeleteChapter = () => {
+    if (!chapterToDelete) return;
+
+    const { moduleId, chapterId } = chapterToDelete;
+
+    // Clean up chapter pages from ref and localStorage
+    try {
+      const chapterKey = getChapterKey(moduleId, chapterId);
+      delete chapterPagesRef.current[chapterKey];
+      localStorage.setItem(
+        "polotno-demo-chapter-pages",
+        JSON.stringify(chapterPagesRef.current)
+      );
+    } catch (e) {
+      console.error("Error cleaning up chapter pages:", e);
+    }
+
+    setModules(
+      modules.map((module) =>
+        module.id === moduleId
+          ? {
+              ...module,
+              chapters: module.chapters.filter((c) => c.id !== chapterId),
+            }
+          : module
+      )
+    );
+
+    setDeleteChapterModalOpen(false);
+    setChapterToDelete(null);
+  };
+
+  const cancelDeleteChapter = () => {
+    setDeleteChapterModalOpen(false);
+    setChapterToDelete(null);
+  };
+
+  const handleSaveChapter = () => {
+    if (!chapterName.trim() || !editingChapterId) return;
+
+    setModules(
+      modules.map((module) =>
+        module.id === activeModuleId
+          ? {
+              ...module,
+              chapters: module.chapters.map((chapter) =>
+                chapter.id === editingChapterId
+                  ? { ...chapter, name: chapterName.trim() }
+                  : chapter
+              ),
+            }
+          : module
+      )
+    );
+
+    setChapterName("");
+    setEditingChapterId(null);
+    setEditChapterModalOpen(false);
+  };
+
+  const toggleChapter = (moduleId, chapterId) => {
+    const module = modules.find((m) => m.id === moduleId);
+    const chapter = module?.chapters?.find((c) => c.id === chapterId);
+    const isCurrentlyExpanded = chapter?.isExpanded || false;
+
+    // Save current chapter pages before switching
+    if (moduleId === activeModuleId) {
+      try {
+        const current = store.toJSON();
+        const currentChapterKey = getChapterKey(
+          activeModuleId,
+          activeChapterId
+        );
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+      } catch (e) {
+        console.error("Error saving current chapter pages:", e);
+      }
+    }
+
+    setModules(
+      modules.map((module) =>
+        module.id === moduleId
+          ? {
+              ...module,
+              chapters: module.chapters.map((chapter) =>
+                chapter.id === chapterId
+                  ? { ...chapter, isExpanded: !chapter.isExpanded }
+                  : chapter
+              ),
+            }
+          : module
+      )
+    );
+
+    // If expanding a chapter, load its pages or start fresh
+    if (!isCurrentlyExpanded && moduleId === activeModuleId) {
+      setActiveChapterId(chapterId);
+      loadChapterPages(moduleId, chapterId);
     }
   };
 
@@ -203,7 +507,16 @@ const HierarchicalPagesNavigation = ({ store }) => {
         const newModule = {
           id: Date.now(),
           name: newItemName.trim(),
-          chapters: [],
+          chapters: showChapterOption
+            ? [
+                {
+                  id: Date.now() + 1,
+                  name: chapterName.trim() || "Chapter 1",
+                  pages: [],
+                  isExpanded: true,
+                },
+              ]
+            : [],
           isExpanded: true,
         };
 
@@ -215,14 +528,85 @@ const HierarchicalPagesNavigation = ({ store }) => {
           store.loadJSON({ ...base, pages: [] });
         } catch (e) {}
       }
+    } else if (createType === "chapter") {
+      // Save current chapter pages before creating new one
+      try {
+        const current = store.toJSON();
+        const currentChapterKey = getChapterKey(
+          activeModuleId,
+          activeChapterId
+        );
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+      } catch (e) {
+        console.error("Error saving current chapter pages:", e);
+      }
+
+      // Creating new chapter
+      const newChapter = {
+        id: Date.now(),
+        name: newItemName.trim(),
+        pages: [],
+        isExpanded: true,
+      };
+
+      setModules(
+        modules.map((module) =>
+          module.id === activeModuleId
+            ? {
+                ...module,
+                chapters: [...module.chapters, newChapter],
+              }
+            : module
+        )
+      );
+
+      // Set new chapter as active and start with empty pages
+      setActiveChapterId(newChapter.id);
+
+      // Initialize empty pages for the new chapter
+      const chapterKey = getChapterKey(activeModuleId, newChapter.id);
+      chapterPagesRef.current[chapterKey] = [];
+
+      try {
+        const base = store.toJSON();
+        store.loadJSON({ ...base, pages: [] });
+      } catch (e) {
+        console.error("Error clearing store for new chapter:", e);
+      }
     }
-    // TODO: Add chapter and slide creation logic later
 
     setNewItemName("");
+    setChapterName("");
+    setShowChapterOption(false);
     setIsCreateModalOpen(false);
   };
 
   const toggleModule = (moduleId) => {
+    const isCurrentlyExpanded =
+      modules.find((m) => m.id === moduleId)?.isExpanded || false;
+
+    // Save current chapter pages before switching modules
+    if (activeModuleId !== moduleId) {
+      try {
+        const current = store.toJSON();
+        const currentChapterKey = getChapterKey(
+          activeModuleId,
+          activeChapterId
+        );
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+      } catch (e) {
+        console.error("Error saving current chapter pages:", e);
+      }
+    }
+
     // Save current module pages
     try {
       const current = store.toJSON();
@@ -234,20 +618,41 @@ const HierarchicalPagesNavigation = ({ store }) => {
       );
     } catch (e) {}
 
-    setModules(
-      modules.map((module) =>
-        module.id === moduleId
-          ? { ...module, isExpanded: !module.isExpanded }
-          : module
-      )
-    );
-    // Set as active module and load its pages snapshot (or empty)
-    setActiveModuleId(moduleId);
-    try {
-      const base = store.toJSON();
-      const pages = modulePagesRef.current[moduleId] || [];
-      store.loadJSON({ ...base, pages });
-    } catch (e) {}
+    // If the module is collapsed, expand it and collapse all others
+    // If the module is expanded, just collapse it
+    if (!isCurrentlyExpanded) {
+      // Module is collapsed - expand it, collapse all others, and make it active
+      setModules(
+        modules.map((module) =>
+          module.id === moduleId
+            ? { ...module, isExpanded: true }
+            : { ...module, isExpanded: false }
+        )
+      );
+      setActiveModuleId(moduleId);
+
+      // Set the first chapter as active and load its pages
+      const newModule = modules.find((m) => m.id === moduleId);
+      if (newModule && newModule.chapters && newModule.chapters.length > 0) {
+        const firstChapter = newModule.chapters[0];
+        setActiveChapterId(firstChapter.id);
+        loadChapterPages(moduleId, firstChapter.id);
+      } else {
+        // No chapters, load module pages
+        try {
+          const base = store.toJSON();
+          const pages = modulePagesRef.current[moduleId] || [];
+          store.loadJSON({ ...base, pages });
+        } catch (e) {}
+      }
+    } else {
+      // Module is expanded - just collapse it
+      setModules(
+        modules.map((module) =>
+          module.id === moduleId ? { ...module, isExpanded: false } : module
+        )
+      );
+    }
 
     // Hide Pages text after module expansion
     setTimeout(() => {
@@ -281,8 +686,14 @@ const HierarchicalPagesNavigation = ({ store }) => {
       const savedModulePages = localStorage.getItem(
         "polotno-demo-module-pages"
       );
+      const savedChapterPages = localStorage.getItem(
+        "polotno-demo-chapter-pages"
+      );
       const savedActiveModuleId = localStorage.getItem(
         "polotno-demo-active-module-id"
+      );
+      const savedActiveChapterId = localStorage.getItem(
+        "polotno-demo-active-chapter-id"
       );
 
       if (savedModules) {
@@ -300,12 +711,30 @@ const HierarchicalPagesNavigation = ({ store }) => {
         );
       }
 
+      if (savedChapterPages) {
+        const parsedChapterPages = JSON.parse(savedChapterPages);
+        chapterPagesRef.current = parsedChapterPages;
+        console.log(
+          "Loaded chapter pages from localStorage:",
+          parsedChapterPages
+        );
+      }
+
       if (savedActiveModuleId) {
         const parsedActiveModuleId = parseInt(savedActiveModuleId);
         setActiveModuleId(parsedActiveModuleId);
         console.log(
           "Loaded active module ID from localStorage:",
           parsedActiveModuleId
+        );
+      }
+
+      if (savedActiveChapterId) {
+        const parsedActiveChapterId = parseInt(savedActiveChapterId);
+        setActiveChapterId(parsedActiveChapterId);
+        console.log(
+          "Loaded active chapter ID from localStorage:",
+          parsedActiveChapterId
         );
       }
     } catch (error) {
@@ -336,6 +765,19 @@ const HierarchicalPagesNavigation = ({ store }) => {
     }
   }, [activeModuleId]);
 
+  // Save active chapter ID to localStorage whenever it changes
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        "polotno-demo-active-chapter-id",
+        activeChapterId.toString()
+      );
+      console.log("Saved active chapter ID to localStorage:", activeChapterId);
+    } catch (error) {
+      console.error("Error saving active chapter ID to localStorage:", error);
+    }
+  }, [activeChapterId]);
+
   // Save module pages to localStorage whenever they change
   React.useEffect(() => {
     try {
@@ -351,6 +793,22 @@ const HierarchicalPagesNavigation = ({ store }) => {
       console.error("Error saving module pages to localStorage:", error);
     }
   }, [modulePagesRef.current]);
+
+  // Save chapter pages to localStorage whenever they change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        "polotno-demo-chapter-pages",
+        JSON.stringify(chapterPagesRef.current)
+      );
+      console.log(
+        "Saved chapter pages to localStorage:",
+        chapterPagesRef.current
+      );
+    } catch (error) {
+      console.error("Error saving chapter pages to localStorage:", error);
+    }
+  }, [chapterPagesRef.current]);
 
   // Save current module's pages whenever the store changes
   React.useEffect(() => {
@@ -402,6 +860,18 @@ const HierarchicalPagesNavigation = ({ store }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Initialize snapshot for the first chapter on mount
+  React.useEffect(() => {
+    try {
+      const json = store.toJSON();
+      const chapterKey = getChapterKey(activeModuleId, activeChapterId);
+      if (!chapterPagesRef.current[chapterKey]) {
+        chapterPagesRef.current[chapterKey] = json.pages || [];
+      }
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div
       style={{
@@ -422,7 +892,7 @@ const HierarchicalPagesNavigation = ({ store }) => {
               display: "flex",
               alignItems: "center",
               padding: "8px 12px",
-              backgroundColor: "#e1e5e9",
+              backgroundColor: module.isExpanded ? "#e1e5e9" : "#f5f5f5",
               borderRadius: "4px",
               cursor: "pointer",
               marginBottom: "5px",
@@ -454,22 +924,187 @@ const HierarchicalPagesNavigation = ({ store }) => {
               {module.name}
             </span>
             <span
-              style={{ marginLeft: "6px", fontSize: "10px", flexShrink: 0 }}
+              style={{ marginLeft: "6px", fontSize: "12px", flexShrink: 0 }}
             >
               {module.isExpanded ? "▼" : "▶"}
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteModule(module.id);
+              }}
+              style={{
+                marginLeft: "6px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#666",
+                fontSize: "12px",
+                padding: "2px",
+                borderRadius: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "16px",
+                height: "16px",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = "#ff6b6b";
+                e.target.style.color = "white";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = "transparent";
+                e.target.style.color = "#666";
+              }}
+              title="Delete module"
+            >
+              ×
+            </button>
           </div>
 
-          {/* Pages under this module - render default PagesTimeline ONLY for active module using ONE store */}
-          {module.isExpanded && module.id === activeModuleId && (
+          {/* Chapters and Pages under this module */}
+          {module.isExpanded && (
             <div style={{ marginLeft: "10px" }}>
+              {module.chapters && module.chapters.length > 0
+                ? // Show chapters if they exist
+                  module.chapters.map((chapter) => (
+                    <div key={chapter.id} style={{ marginBottom: "8px" }}>
+                      {/* Chapter Header */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          padding: "6px 10px",
+                          backgroundColor: chapter.isExpanded
+                            ? "#f8f9fa"
+                            : "#e9ecef",
+                          borderRadius: "3px",
+                          cursor: "pointer",
+                          marginBottom: "3px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          color: "#333",
+                          minWidth: 0,
+                        }}
+                        onClick={() => toggleChapter(module.id, chapter.id)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleEditChapter(module.id, chapter.id);
+                        }}
+                      >
+                        <FolderOpen
+                          size={10}
+                          style={{ marginRight: "4px", flexShrink: 0 }}
+                        />
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={chapter.name}
+                        >
+                          {chapter.name}
+                        </span>
+                        <span
+                          style={{
+                            marginLeft: "4px",
+                            fontSize: "9px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {chapter.isExpanded ? "▼" : "▶"}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteChapter(module.id, chapter.id);
+                          }}
+                          style={{
+                            marginLeft: "4px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#666",
+                            fontSize: "10px",
+                            padding: "1px",
+                            borderRadius: "2px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "14px",
+                            height: "14px",
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = "#ff6b6b";
+                            e.target.style.color = "white";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = "transparent";
+                            e.target.style.color = "#666";
+                          }}
+                          title="Delete chapter"
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      {/* Pages under this chapter - render default PagesTimeline ONLY for active module and expanded chapter */}
+                      {chapter.isExpanded && module.id === activeModuleId && (
+                        <div style={{ marginLeft: "10px" }}>
+                          <div
+                            style={{
+                              overflow: "hidden",
+                              position: "relative",
+                            }}
+                          >
+                            <PagesTimeline store={store} defaultOpened={true} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                : // Show pages directly if no chapters
+                  module.id === activeModuleId && (
+                    <div
+                      style={{
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <PagesTimeline store={store} defaultOpened={true} />
+                    </div>
+                  )}
+
+              {/* Add Chapter Button - only show if module is expanded */}
               <div
                 style={{
-                  overflow: "hidden",
-                  position: "relative",
+                  textAlign: "center",
+                  width: "100%",
+                  padding: "8px 0",
                 }}
               >
-                <PagesTimeline store={store} defaultOpened={true} />
+                <Button
+                  icon={<Plus />}
+                  minimal
+                  data-chapter-button="true"
+                  style={{
+                    width: "90px",
+                    height: "26px",
+                    fontSize: "11px",
+                    whiteSpace: "nowrap",
+                    display: "inline-flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                  onClick={handleCreateChapterClick}
+                >
+                  Add Chapter
+                </Button>
               </div>
             </div>
           )}
@@ -477,20 +1112,32 @@ const HierarchicalPagesNavigation = ({ store }) => {
       ))}
 
       {/* Add Module Button */}
-      <Button
-        icon={<Plus />}
-        minimal
+      <div
         style={{
-          margin: "10px auto",
-          width: "60px",
-          height: "30px",
-          fontSize: "12px",
-          whiteSpace: "nowrap",
+          display: "flex",
+          justifyContent: "center",
+          width: "100%",
+          padding: "10px 0",
         }}
-        onClick={handleCreateClick}
       >
-        Add Module
-      </Button>
+        <Button
+          icon={<Plus />}
+          minimal
+          data-module-button="true"
+          style={{
+            width: "100px",
+            height: "30px",
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+          onClick={handleCreateClick}
+        >
+          Add Module
+        </Button>
+      </div>
 
       {/* Create/Edit Modal */}
       <Dialog
@@ -498,46 +1145,21 @@ const HierarchicalPagesNavigation = ({ store }) => {
         onClose={() => {
           setIsCreateModalOpen(false);
           setEditingModuleId(null);
+          setEditingChapterId(null);
           setNewItemName("");
+          setChapterName("");
+          setShowChapterOption(false);
         }}
-        title={editingModuleId ? "Edit Module" : "Create New Item"}
+        title={
+          editingModuleId
+            ? "Edit Module"
+            : createType === "module"
+            ? "Create New Module"
+            : "Create New Chapter"
+        }
         style={{ width: "400px" }}
       >
         <div style={{ padding: "20px" }}>
-          <div style={{ marginBottom: "15px" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "5px",
-                fontWeight: "bold",
-              }}
-            >
-              What would you like to create?
-            </label>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <Button
-                text="Module"
-                intent={createType === "module" ? "primary" : "none"}
-                onClick={() => setCreateType("module")}
-                small
-              />
-              <Button
-                text="Chapter"
-                intent={createType === "chapter" ? "primary" : "none"}
-                onClick={() => setCreateType("chapter")}
-                small
-                disabled
-              />
-              <Button
-                text="Slide"
-                intent={createType === "slide" ? "primary" : "none"}
-                onClick={() => setCreateType("slide")}
-                small
-                disabled
-              />
-            </div>
-          </div>
-
           <div style={{ marginBottom: "20px" }}>
             <label
               style={{
@@ -561,6 +1183,55 @@ const HierarchicalPagesNavigation = ({ store }) => {
             />
           </div>
 
+          {/* Chapter option for new modules */}
+          {createType === "module" && !editingModuleId && (
+            <div style={{ marginBottom: "20px" }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "10px",
+                  fontWeight: "bold",
+                }}
+              >
+                Do you want chapters for this module?
+              </label>
+              <div
+                style={{ display: "flex", gap: "10px", marginBottom: "10px" }}
+              >
+                <Button
+                  text="Yes"
+                  intent={showChapterOption ? "primary" : "none"}
+                  onClick={() => setShowChapterOption(true)}
+                  small
+                />
+                <Button
+                  text="No"
+                  intent={!showChapterOption ? "primary" : "none"}
+                  onClick={() => setShowChapterOption(false)}
+                  small
+                />
+              </div>
+              {showChapterOption && (
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "5px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Chapter Name:
+                  </label>
+                  <InputGroup
+                    value={chapterName}
+                    onChange={(e) => setChapterName(e.target.value)}
+                    placeholder="Enter chapter name..."
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div
             style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
           >
@@ -569,7 +1240,10 @@ const HierarchicalPagesNavigation = ({ store }) => {
               onClick={() => {
                 setIsCreateModalOpen(false);
                 setEditingModuleId(null);
+                setEditingChapterId(null);
                 setNewItemName("");
+                setChapterName("");
+                setShowChapterOption(false);
               }}
             />
             <Button
@@ -577,6 +1251,144 @@ const HierarchicalPagesNavigation = ({ store }) => {
               intent="primary"
               onClick={handleCreateItem}
               disabled={!newItemName.trim()}
+            />
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog
+        isOpen={deleteModalOpen}
+        onClose={cancelDeleteModule}
+        title="Delete Module"
+        style={{ width: "400px" }}
+      >
+        <div style={{ padding: "20px" }}>
+          <div style={{ marginBottom: "20px" }}>
+            <p style={{ margin: 0, fontSize: "14px", color: "#333" }}>
+              Are you sure you want to delete this module? This action cannot be
+              undone.
+            </p>
+            {moduleToDelete && (
+              <p
+                style={{
+                  margin: "10px 0 0 0",
+                  fontSize: "12px",
+                  color: "#666",
+                  fontStyle: "italic",
+                }}
+              >
+                Module: "{modules.find((m) => m.id === moduleToDelete)?.name}"
+              </p>
+            )}
+          </div>
+
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
+          >
+            <Button text="Cancel" onClick={cancelDeleteModule} />
+            <Button
+              text="Delete"
+              intent="danger"
+              onClick={confirmDeleteModule}
+            />
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Delete Chapter Confirmation Modal */}
+      <Dialog
+        isOpen={deleteChapterModalOpen}
+        onClose={cancelDeleteChapter}
+        title="Delete Chapter"
+        style={{ width: "400px" }}
+      >
+        <div style={{ padding: "20px" }}>
+          <div style={{ marginBottom: "20px" }}>
+            <p style={{ margin: 0, fontSize: "14px", color: "#333" }}>
+              Are you sure you want to delete this chapter? This action cannot
+              be undone.
+            </p>
+            {chapterToDelete && (
+              <p
+                style={{
+                  margin: "10px 0 0 0",
+                  fontSize: "12px",
+                  color: "#666",
+                  fontStyle: "italic",
+                }}
+              >
+                Chapter: "
+                {
+                  modules
+                    .find((m) => m.id === chapterToDelete.moduleId)
+                    ?.chapters?.find((c) => c.id === chapterToDelete.chapterId)
+                    ?.name
+                }
+                "
+              </p>
+            )}
+          </div>
+
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
+          >
+            <Button text="Cancel" onClick={cancelDeleteChapter} />
+            <Button
+              text="Delete"
+              intent="danger"
+              onClick={confirmDeleteChapter}
+            />
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Edit Chapter Modal */}
+      <Dialog
+        isOpen={editChapterModalOpen}
+        onClose={() => {
+          setEditChapterModalOpen(false);
+          setEditingChapterId(null);
+          setChapterName("");
+        }}
+        title="Edit Chapter"
+        style={{ width: "400px" }}
+      >
+        <div style={{ padding: "20px" }}>
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "5px",
+                fontWeight: "bold",
+              }}
+            >
+              Chapter Name:
+            </label>
+            <InputGroup
+              value={chapterName}
+              onChange={(e) => setChapterName(e.target.value)}
+              placeholder="Enter chapter name..."
+              onKeyPress={(e) => e.key === "Enter" && handleSaveChapter()}
+            />
+          </div>
+
+          <div
+            style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}
+          >
+            <Button
+              text="Cancel"
+              onClick={() => {
+                setEditChapterModalOpen(false);
+                setEditingChapterId(null);
+                setChapterName("");
+              }}
+            />
+            <Button
+              text="Save Changes"
+              intent="primary"
+              onClick={handleSaveChapter}
+              disabled={!chapterName.trim()}
             />
           </div>
         </div>
@@ -1056,7 +1868,7 @@ export const App = ({ store }) => {
           textarea.value = originalText || "";
           textarea.placeholder = "Enter narration for this element...";
           textarea.style.cssText =
-            "width: 100%; height: 150px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; box-sizing: border-box; resize: vertical; font-family: inherit;";
+            "width: 100%; height: 160px; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; box-sizing: border-box; resize: vertical; font-family: inherit;";
 
           // Create buttons container
           const buttonsContainer = document.createElement("div");
@@ -1548,7 +2360,7 @@ export const App = ({ store }) => {
           position: "fixed",
           top: "0",
           left: "0",
-          width: "120px",
+          width: "160px",
           height: "100vh",
           zIndex: "1000",
           backgroundColor: "#f0f0f0",
@@ -1560,9 +2372,9 @@ export const App = ({ store }) => {
 
       <PolotnoContainer
         style={{
-          width: "calc(100vw - 120px)",
+          width: "calc(100vw - 160px)",
           height: "100vh",
-          marginLeft: "120px",
+          marginLeft: "160px",
         }}
       >
         <SidePanelWrap>
