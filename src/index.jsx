@@ -1630,6 +1630,9 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
   const [currentTime, setCurrentTime] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
   const [volume, setVolume] = React.useState(1);
+  const [showControls, setShowControls] = React.useState(true);
+  const [isMuted, setIsMuted] = React.useState(true);
+  const controlsTimeoutRef = React.useRef(null);
 
   React.useEffect(() => {
     if (isOpen && videoRef.current) {
@@ -1637,6 +1640,83 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
       videoRef.current.play().catch(console.error);
     }
   }, [isOpen]);
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Hide controls after 3 seconds of inactivity
+  const resetControlsTimeout = () => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    setShowControls(true);
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  };
+
+  // Show controls on mouse move
+  const handleMouseMove = () => {
+    resetControlsTimeout();
+  };
+
+  // Handle video click for play/pause
+  const handleVideoClick = (e) => {
+    e.preventDefault();
+    handlePlayPause();
+  };
+
+  // Keyboard controls
+  React.useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (!isOpen) return;
+
+      switch (e.code) {
+        case "Space":
+          e.preventDefault();
+          handlePlayPause();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          handleSeek(Math.max(0, currentTime - 5));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          handleSeek(Math.min(duration, currentTime + 5));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          handleVolumeChange(Math.min(1, volume + 0.1));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          handleVolumeChange(Math.max(0, volume - 0.1));
+          break;
+        case "KeyM":
+          e.preventDefault();
+          handleMuteToggle();
+          break;
+        case "KeyF":
+          e.preventDefault();
+          handleFullscreen();
+          break;
+        case "Escape":
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          }
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyPress);
+    return () => document.removeEventListener("keydown", handleKeyPress);
+  }, [isOpen, currentTime, duration, volume]);
 
   const handlePlayPause = () => {
     if (videoRef.current) {
@@ -1647,6 +1727,7 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
         videoRef.current.pause();
         setIsPlaying(false);
       }
+      resetControlsTimeout();
     }
   };
 
@@ -1654,6 +1735,7 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
     if (videoRef.current) {
       videoRef.current.currentTime = time;
       setCurrentTime(time);
+      resetControlsTimeout();
     }
   };
 
@@ -1661,6 +1743,28 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
     if (videoRef.current) {
       videoRef.current.volume = newVolume;
       setVolume(newVolume);
+      if (newVolume > 0) {
+        setIsMuted(false);
+        videoRef.current.muted = false;
+      }
+      resetControlsTimeout();
+    }
+  };
+
+  const handleMuteToggle = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !videoRef.current.muted;
+      setIsMuted(videoRef.current.muted);
+      resetControlsTimeout();
+    }
+  };
+
+  const handleFullscreen = () => {
+    if (videoRef.current) {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      }
+      resetControlsTimeout();
     }
   };
 
@@ -1712,7 +1816,7 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
           ref={videoRef}
           src="/vidoes/video.mp4"
           loop
-          muted
+          muted={isMuted}
           autoPlay
           playsInline
           style={{
@@ -1720,7 +1824,10 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
             height: "100%",
             objectFit: "cover",
             display: "block",
+            cursor: "pointer",
           }}
+          onClick={handleVideoClick}
+          onMouseMove={handleMouseMove}
           onError={(e) => console.error("Video error:", e)}
           onLoadStart={() => console.log("Video: loadstart")}
           onLoadedData={() => console.log("Video: loadeddata")}
@@ -1743,7 +1850,11 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
             display: "flex",
             flexDirection: "column",
             gap: "10px",
+            opacity: showControls ? 1 : 0,
+            transition: "opacity 0.3s ease",
+            pointerEvents: showControls ? "auto" : "none",
           }}
+          onMouseMove={handleMouseMove}
         >
           {/* Progress Bar */}
           <div
@@ -1796,15 +1907,15 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
                   background: "transparent",
                   border: "none",
                   color: "white",
-                  fontSize: "24px",
+                  fontSize: "18px",
                   cursor: "pointer",
                   padding: "5px",
                   borderRadius: "50%",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: "40px",
-                  height: "40px",
+                  width: "35px",
+                  height: "35px",
                 }}
                 onMouseEnter={(e) =>
                   (e.target.style.background = "rgba(255,255,255,0.2)")
@@ -1816,9 +1927,9 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
                 {isPlaying ? "⏸️" : "▶️"}
               </button>
 
-              {/* Backward 10s Button */}
+              {/* Backward 2s Button */}
               <button
-                onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                onClick={() => handleSeek(Math.max(0, currentTime - 2))}
                 style={{
                   background: "transparent",
                   border: "none",
@@ -1843,9 +1954,9 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
                 ⏪
               </button>
 
-              {/* Forward 10s Button */}
+              {/* Forward 2s Button */}
               <button
-                onClick={() => handleSeek(Math.min(duration, currentTime + 10))}
+                onClick={() => handleSeek(Math.min(duration, currentTime + 2))}
                 style={{
                   background: "transparent",
                   border: "none",
@@ -1885,17 +1996,43 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
 
             {/* Right Controls */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Mute Button */}
+              <button
+                onClick={handleMuteToggle}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  padding: "5px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "35px",
+                  height: "35px",
+                }}
+                onMouseEnter={(e) =>
+                  (e.target.style.background = "rgba(255,255,255,0.2)")
+                }
+                onMouseLeave={(e) =>
+                  (e.target.style.background = "transparent")
+                }
+              >
+                {isMuted ? "🔇" : "🔊"}
+              </button>
+
               {/* Volume Control */}
               <div
                 style={{ display: "flex", alignItems: "center", gap: "5px" }}
               >
-                <span style={{ color: "white", fontSize: "16px" }}>🔊</span>
                 <input
                   type="range"
                   min="0"
                   max="1"
                   step="0.1"
-                  value={volume}
+                  value={isMuted ? 0 : volume}
                   onChange={(e) =>
                     handleVolumeChange(parseFloat(e.target.value))
                   }
@@ -1911,13 +2048,7 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
 
               {/* Fullscreen Button */}
               <button
-                onClick={() => {
-                  if (videoRef.current) {
-                    if (videoRef.current.requestFullscreen) {
-                      videoRef.current.requestFullscreen();
-                    }
-                  }
-                }}
+                onClick={handleFullscreen}
                 style={{
                   background: "transparent",
                   border: "none",
