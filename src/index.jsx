@@ -88,7 +88,7 @@ const verticalPagesCSS = `
   
   /* Center the plus icon within the button */
   .polotno-pages-timeline .bp5-button svg {
-    margin: 0 auto !important;
+    margin: 0 15px !important;
   }
   
   /* Force all nested elements to be vertical but NOT take full height */
