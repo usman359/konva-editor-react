@@ -5,6 +5,8 @@ import { Toolbar } from "polotno/toolbar/toolbar";
 import { PagesTimeline } from "polotno/pages-timeline";
 import { ZoomButtons } from "polotno/toolbar/zoom-buttons";
 import { SidePanel } from "polotno/side-panel";
+// Native sections API from Polotno
+import { DEFAULT_SECTIONS, SectionTab } from "polotno/side-panel";
 import { Workspace } from "polotno/canvas/workspace";
 import {
   Button,
@@ -14,13 +16,28 @@ import {
   Position,
   Dialog,
   InputGroup,
+  Icon,
 } from "@blueprintjs/core";
-import { Download, Plus, FolderOpen, Edit } from "@blueprintjs/icons";
+import {
+  Download,
+  Plus,
+  FolderOpen,
+  Edit,
+  User,
+  Search,
+  Video,
+} from "@blueprintjs/icons";
 import { saveAs } from "file-saver";
 
 import "@blueprintjs/core/lib/css/blueprint.css";
 
 import { createStore } from "polotno/model/store";
+// Build an Avatar panel identical to Photos panel using Polotno internals
+import { ImagesGrid } from "polotno/side-panel";
+import { useInfiniteAPI } from "polotno/utils/use-api";
+import { unsplashList, unsplashDownload } from "polotno/utils/api";
+import { selectImage } from "polotno/side-panel/select-image";
+import { observer } from "mobx-react-lite";
 
 // Add custom CSS for vertical pages timeline
 const verticalPagesCSS = `
@@ -238,6 +255,9 @@ const store = createStore({
   // but it will be good if you can keep it for Polotno project support
   showCredit: true,
 });
+
+// Make store available globally for onclick handlers
+window.polotnoStore = store;
 
 // Custom Hierarchical Pages Navigation Component
 const HierarchicalPagesNavigation = ({ store }) => {
@@ -1440,11 +1460,98 @@ const HierarchicalPagesNavigation = ({ store }) => {
   );
 };
 
-// Custom Side Panel that includes both default panel and narration panel
-const CustomSidePanel = ({ store }) => {
+// AvatarPanel: native panel that mirrors Photos, filtered for faces
+const AvatarPanel = observer(({ store }) => {
+  const { setQuery, loadMore, isReachingEnd, data, isLoading, error } =
+    useInfiniteAPI({
+      defaultQuery: "avatar", // default query to show faces/portraits
+      getAPI: ({ page, query }) => unsplashList({ page, query }),
+    });
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <SidePanel store={store} />
+      <InputGroup
+        leftIcon={<Search />}
+        placeholder="Search"
+        onChange={(e) => setQuery(e.target.value)}
+        type="search"
+        style={{ marginBottom: "20px" }}
+      />
+      <p style={{ textAlign: "center" }}>
+        Photos by{" "}
+        <a href="https://unsplash.com/" target="_blank">
+          Unsplash
+        </a>
+      </p>
+      <ImagesGrid
+        images={data
+          ?.map((i) => i.results)
+          .flat()
+          .filter(Boolean)}
+        getPreview={(img) => img.urls.small}
+        onSelect={async (img, pos, target) => {
+          fetch(unsplashDownload(img.id));
+          selectImage({
+            src: img.urls.regular,
+            store,
+            droppedPos: pos,
+            targetElement: target,
+          });
+        }}
+        isLoading={isLoading}
+        error={error}
+        loadMore={!isReachingEnd && loadMore}
+        getCredit={(img) => (
+          <span>
+            Photo by{" "}
+            <a
+              href={`https://unsplash.com/@${img.user.username}?utm_source=polotno&utm_medium=referral`}
+              target="_blank"
+            >
+              {img.user.name}
+            </a>{" "}
+            on{" "}
+            <a
+              href="https://unsplash.com/?utm_source=polotno&utm_medium=referral"
+              target="_blank"
+            >
+              Unsplash
+            </a>
+          </span>
+        )}
+      />
+    </div>
+  );
+});
+
+// Native AvatarSection wired into Polotno's side panel
+const AvatarSection = {
+  name: "avatar",
+  Tab: observer((props) => (
+    <SectionTab {...props} name="Avatar">
+      <Icon icon={<User />} />
+    </SectionTab>
+  )),
+  Panel: ({ store }) => <AvatarPanel store={store} />,
+};
+
+// Custom Side Panel that registers native Avatar section
+const CustomSidePanel = ({ store }) => {
+  const sections = React.useMemo(() => {
+    // Insert Avatar right after Photos
+    const list = [...DEFAULT_SECTIONS];
+    const photosIndex = list.findIndex((s) => s.name === "photos");
+    if (photosIndex >= 0) {
+      list.splice(photosIndex + 1, 0, AvatarSection);
+    } else {
+      list.splice(2, 0, AvatarSection);
+    }
+    return list;
+  }, []);
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <SidePanel store={store} sections={sections} />
     </div>
   );
 };
@@ -1513,6 +1620,302 @@ const CustomDownloadButton = ({ store }) => {
         style={{ marginLeft: "12px" }}
       />
     </Popover>
+  );
+};
+
+// HTML5 Video Player Component
+const HTML5VideoPlayer = ({ isOpen, onClose }) => {
+  const videoRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (isOpen && videoRef.current) {
+      // Auto-play the video when modal opens
+      videoRef.current.play().catch(console.error);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Video Player"
+      style={{
+        width: "800px",
+        height: "500px",
+        maxWidth: "90vw",
+        maxHeight: "80vh",
+        padding: "0",
+        margin: "0",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          padding: "0",
+          margin: "0",
+          position: "relative",
+        }}
+      >
+        <video
+          ref={videoRef}
+          src="/vidoes/video.mp4"
+          controls
+          loop
+          muted
+          autoPlay
+          playsInline
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+          onError={(e) => console.error("Video error:", e)}
+          onLoadStart={() => console.log("Video: loadstart")}
+          onLoadedData={() => console.log("Video: loadeddata")}
+          onCanPlay={() => console.log("Video: canplay")}
+          onPlaying={() => console.log("Video: playing")}
+        />
+      </div>
+    </Dialog>
+  );
+};
+
+// Custom Create Button Component for Video Generation
+const CustomCreateButton = ({ store }) => {
+  const [hasNarrations, setHasNarrations] = React.useState(false);
+  const [showVideoPlayer, setShowVideoPlayer] = React.useState(false);
+
+  // Check for narrations in the Layers tab
+  React.useEffect(() => {
+    const checkForNarrations = () => {
+      try {
+        console.log("=== Checking for narrations ===");
+
+        // Look for the "Narrations on your active page" section more specifically
+        const narrationsSection = Array.from(
+          document.querySelectorAll("div, span, p")
+        ).find(
+          (el) =>
+            el.textContent &&
+            el.textContent.includes("Narrations on your active page") &&
+            el.textContent.length < 1000 // Avoid selecting the entire document
+        );
+
+        console.log("Narrations section found:", !!narrationsSection);
+        if (!narrationsSection) {
+          console.log("No narrations section found, disabling button");
+          setHasNarrations(false);
+          return;
+        }
+
+        // Debug: Log the narrations section HTML structure (only if found)
+        if (narrationsSection) {
+          console.log("Narrations section found, checking for items...");
+        }
+
+        // Find all menu items within that section
+        const allMenuItems = Array.from(
+          narrationsSection.querySelectorAll(".bp5-menu-item")
+        );
+        console.log("All menu items in section:", allMenuItems.length);
+
+        allMenuItems.forEach((item, index) => {
+          const text = item.textContent?.trim();
+          console.log(`Item ${index}:`, text);
+        });
+
+        // Find narration items within that section
+        const narrationItems = allMenuItems.filter((item) => {
+          const text = item.textContent?.trim();
+          // Only consider items that are actual narrations (not UI labels)
+          const isNarration =
+            text &&
+            text.length > 0 &&
+            text.length < 100 && // Reasonable length for narration
+            !text.includes("Add") &&
+            !text.includes("Module") &&
+            !text.includes("Chapter") &&
+            !text.includes("Download") &&
+            !text.includes("Create") &&
+            !text.includes("Upload") &&
+            !text.includes("Background") &&
+            !text.includes("Layers") &&
+            !text.includes("Resize") &&
+            !text.includes("Templates") &&
+            !text.includes("Photos") &&
+            !text.includes("Avatar") &&
+            !text.includes("Elements") &&
+            !text.includes("Position") &&
+            !text.includes("Narrations on your active page") &&
+            text !== "Text" &&
+            text !== "Image" &&
+            !text.match(/^Text\s*$/) &&
+            !text.match(/^Image\s*$/) &&
+            !text.includes("No Narrations") &&
+            !text.includes("No narrations");
+
+          if (isNarration) {
+            console.log("Found narration:", text);
+          }
+
+          return isNarration;
+        });
+
+        console.log("Found narration items:", narrationItems.length);
+        if (narrationItems.length > 0) {
+          console.log(
+            "Narration items found:",
+            narrationItems.map((item) => item.textContent?.trim())
+          );
+        }
+
+        // If no narrations found with the first method, try alternative selectors
+        if (narrationItems.length === 0) {
+          console.log("Trying alternative selectors...");
+
+          // Try different selectors for narration items
+          const alternativeSelectors = [
+            "span", // The actual narration text elements
+            "div span", // Nested spans
+            ".bp5-menu-item",
+            '[role="menuitem"]',
+            ".bp5-menu-item span",
+            ".bp5-menu-item div",
+            ".polotno-element-item",
+          ];
+
+          let foundItems = [];
+          for (const selector of alternativeSelectors) {
+            const items = Array.from(document.querySelectorAll(selector));
+            const narrations = items.filter((item) => {
+              const text = item.textContent?.trim();
+              // Much more strict filtering to exclude UI elements
+              return (
+                text &&
+                text.length > 0 &&
+                text.length < 100 && // Reasonable length for narration text
+                text.length > 3 && // At least 4 characters (excludes "▼", "51%", etc.)
+                !text.includes("Add") &&
+                !text.includes("Module") &&
+                !text.includes("Chapter") &&
+                !text.includes("Download") &&
+                !text.includes("Create") &&
+                !text.includes("Upload") &&
+                !text.includes("Background") &&
+                !text.includes("Layers") &&
+                !text.includes("Resize") &&
+                !text.includes("Templates") &&
+                !text.includes("Photos") &&
+                !text.includes("Avatar") &&
+                !text.includes("Elements") &&
+                !text.includes("Position") &&
+                !text.includes("Narrations on your active page") &&
+                !text.includes("No Narrations") &&
+                !text.includes("No narrations") &&
+                text !== "Text" &&
+                text !== "Image" &&
+                text !== "▼" && // Exclude dropdown arrows
+                text !== "Pages" && // Exclude "Pages" text
+                !text.match(/^\d+%$/) && // Exclude percentage like "51%"
+                !text.match(/^Text\s*$/) &&
+                !text.match(/^Image\s*$/) &&
+                !text.match(/^[▼▲◀▶]$/) && // Exclude all arrow symbols
+                !text.match(/^\d+$/) && // Exclude pure numbers
+                !text.match(/^[A-Za-z]{1,3}$/) // Exclude short words like "Pages"
+              );
+            });
+
+            if (narrations.length > 0) {
+              console.log(
+                `Found ${narrations.length} narrations with selector: ${selector}`
+              );
+              foundItems = narrations;
+              break;
+            }
+          }
+
+          console.log(
+            "Alternative method found:",
+            foundItems.length,
+            "narrations"
+          );
+          if (foundItems.length > 0) {
+            console.log(
+              "Alternative narrations found:",
+              foundItems.map((item) => item.textContent?.trim())
+            );
+          }
+          setHasNarrations(foundItems.length > 0);
+        } else {
+          console.log("Setting hasNarrations to:", narrationItems.length > 0);
+          setHasNarrations(narrationItems.length > 0);
+        }
+      } catch (error) {
+        console.error("Error checking for narrations:", error);
+        setHasNarrations(false);
+      }
+    };
+
+    // Check immediately
+    checkForNarrations();
+
+    // Set up observer to watch for changes in the Layers tab
+    const observer = new MutationObserver(() => {
+      checkForNarrations();
+    });
+
+    // Observe the entire document for changes
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+    });
+
+    // Also check periodically as a fallback (less frequent to avoid infinite loops)
+    const interval = setInterval(checkForNarrations, 3000);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleCreateVideo = () => {
+    if (!hasNarrations) {
+      alert(
+        "No narrations found in the Layers tab. Add some narrations first!"
+      );
+      return;
+    }
+
+    console.log("Creating video for narrations...");
+    setShowVideoPlayer(true);
+  };
+
+  return (
+    <>
+      <Button
+        icon={<Video />}
+        text="Create Video"
+        intent="primary"
+        onClick={handleCreateVideo}
+        disabled={!hasNarrations}
+        style={{
+          marginLeft: "12px",
+          whiteSpace: "nowrap",
+          minWidth: "150px",
+          opacity: hasNarrations ? 1 : 0.5,
+        }}
+      />
+      <HTML5VideoPlayer
+        isOpen={showVideoPlayer}
+        onClose={() => setShowVideoPlayer(false)}
+      />
+    </>
   );
 };
 
@@ -1692,6 +2095,8 @@ export const App = ({ store }) => {
 
     return () => cancelAnimationFrame(animationId);
   }, []);
+
+  // Old DOM-based Avatar tab removed - using native AvatarSection instead
 
   // Add modal functionality to narration input fields in layers panel
   React.useEffect(() => {
@@ -2753,6 +3158,163 @@ export const App = ({ store }) => {
     return () => observer.disconnect();
   }, []);
 
+  // Fix narration input placeholder text
+  React.useEffect(() => {
+    const fixNarrationInputs = () => {
+      console.log("=== Fixing narration inputs ===");
+
+      // Find the Edit Narration modal
+      const editModal = Array.from(document.querySelectorAll("*")).find(
+        (el) =>
+          el.textContent &&
+          el.textContent.includes("Edit Narration") &&
+          el.tagName === "DIV"
+      );
+
+      if (editModal) {
+        console.log("Found Edit Narration modal");
+
+        // Find input field in the modal - try multiple selectors
+        let modalInput = editModal.querySelector('input[type="text"]');
+
+        if (!modalInput) {
+          modalInput = editModal.querySelector(
+            'input[placeholder*="Type element name"]'
+          );
+        }
+
+        if (!modalInput) {
+          modalInput = editModal.querySelector("input");
+        }
+
+        if (!modalInput) {
+          modalInput = editModal.querySelector("textarea");
+        }
+
+        console.log("Modal input search result:", modalInput);
+
+        if (modalInput) {
+          console.log("Found input in modal:", modalInput);
+
+          // Ensure we only autofill once per modal open
+          if (!editModal.__autofilledOnce) {
+            let narrationText = "";
+
+            // 1) Prefer active element from Polotno store
+            try {
+              const store = window?.polotnoStore;
+              const active = store?.selectedElements?.[0];
+              if (active) {
+                // Use name, text, or title if available, otherwise just the ID with #
+                narrationText =
+                  active.name ||
+                  active.text ||
+                  active.title ||
+                  `#${active.id || ""}`;
+                console.log(
+                  "Derived narration from store element:",
+                  narrationText
+                );
+              }
+            } catch (e) {
+              console.log("No store/selected element available", e);
+            }
+
+            // 2) Fallback: derive from Layers pane DOM (more permissive)
+            if (!narrationText) {
+              const narrationsSection = Array.from(
+                document.querySelectorAll("*")
+              ).find(
+                (el) =>
+                  el.textContent &&
+                  el.textContent.includes("Narrations on your active page") &&
+                  el.tagName === "DIV"
+              );
+
+              if (narrationsSection) {
+                const candidates = Array.from(
+                  narrationsSection.querySelectorAll(
+                    ".bp5-menu-item, [role='menuitem'], span, div"
+                  )
+                )
+                  .map((n) => n.textContent?.trim())
+                  .filter(
+                    (t) =>
+                      t &&
+                      t !== "Type element name..." &&
+                      t.length > 0 &&
+                      t.length < 120 &&
+                      !/^\d+%$/.test(t) &&
+                      !/^\d+$/.test(t)
+                  );
+                if (candidates.length) {
+                  // Remove type prefixes like "Image #", "Text #", etc.
+                  let text = candidates[0];
+                  text = text.replace(
+                    /^(Image|Text|Element|Shape|Group)\s*#/,
+                    "#"
+                  );
+                  narrationText = text;
+                  console.log(
+                    "Derived narration from DOM candidates:",
+                    narrationText
+                  );
+                }
+              } else {
+                console.log("Narrations section not found");
+              }
+            }
+
+            // 3) Apply to modal input and dispatch events so React updates
+            if (narrationText) {
+              const setValue = Object.getOwnPropertyDescriptor(
+                Object.getPrototypeOf(modalInput),
+                "value"
+              )?.set;
+              if (setValue) {
+                setValue.call(modalInput, narrationText);
+              } else {
+                modalInput.value = narrationText;
+              }
+              modalInput.placeholder = narrationText;
+              modalInput.dispatchEvent(new Event("input", { bubbles: true }));
+              modalInput.dispatchEvent(new Event("change", { bubbles: true }));
+              editModal.__autofilledOnce = true;
+              console.log("Set modal input to:", narrationText);
+            } else {
+              console.log("No narration text derived to fill modal");
+            }
+          }
+        } else {
+          console.log("No input found in modal");
+        }
+      } else {
+        console.log("Edit Narration modal not found");
+      }
+    };
+
+    // Run immediately
+    fixNarrationInputs();
+
+    // Set up observer to watch for new input fields
+    const observer = new MutationObserver(() => {
+      fixNarrationInputs();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Also run periodically as fallback (more frequent for modal detection)
+    const interval = setInterval(fixNarrationInputs, 500);
+
+    return () => {
+      observer.disconnect();
+      clearInterval(interval);
+    };
+  }, []);
+
   return (
     <>
       {/* Hierarchical Pages Navigation - Top Left Position */}
@@ -2792,6 +3354,7 @@ export const App = ({ store }) => {
           >
             <Toolbar store={store} downloadButtonEnabled={false} />
             <CustomDownloadButton store={store} />
+            <CustomCreateButton store={store} />
           </div>
           <Workspace store={store} />
           <ZoomButtons store={store} />
