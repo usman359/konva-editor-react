@@ -24,15 +24,15 @@ import { createStore } from "polotno/model/store";
 
 // Add custom CSS for vertical pages timeline
 const verticalPagesCSS = `
-  /* Force the pages timeline container to take full height and be vertical */
+  /* Force the pages timeline container to be vertical but with limited height */
   .polotno-pages-timeline {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     padding: 10px 5px !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    max-height: 100vh !important;
+    height: 300px !important;
+    min-height: 300px !important;
+    max-height: 600px !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     justify-content: flex-start !important;
@@ -101,9 +101,9 @@ const verticalPagesCSS = `
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    max-height: 100vh !important;
+    height: 300px !important;
+    min-height: 200px !important;
+    max-height: 400px !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     flex: 1 !important;
@@ -115,8 +115,9 @@ const verticalPagesCSS = `
     flex-direction: column !important;
     align-items: center !important;
     justify-content: flex-start !important;
-    height: 100% !important;
-    min-height: 100% !important;
+    height: 300px !important;
+    min-height: 200px !important;
+    max-height: 400px !important;
     flex: 1 !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
@@ -128,23 +129,25 @@ const verticalPagesCSS = `
     flex-direction: column !important;
     align-items: center !important;
     justify-content: flex-start !important;
-    height: 100% !important;
-    min-height: 100% !important;
+    height: 300px !important;
+    min-height: 200px !important;
+    max-height: 400px !important;
     flex: 1 !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
   }
   
-  /* Ensure the container div also takes full height */
+  /* Ensure the container div also takes limited height */
   .polotno-pages-timeline > div {
-    height: 100% !important;
-    min-height: 100% !important;
+    height: 300px !important;
+    min-height: 200px !important;
+    max-height: 400px !important;
     flex: 1 !important;
     display: flex !important;
     flex-direction: column !important;
   }
   
-  /* Keep individual page thumbnails at their original size */
+  /* Keep individual page thumbnails compact */
   .polotno-pages-timeline .polotno-page-container {
     height: 80px !important;
     min-height: 80px !important;
