@@ -1623,9 +1623,13 @@ const CustomDownloadButton = ({ store }) => {
   );
 };
 
-// HTML5 Video Player Component
+// HTML5 Video Player Component with Custom Controls
 const HTML5VideoPlayer = ({ isOpen, onClose }) => {
   const videoRef = React.useRef(null);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [duration, setDuration] = React.useState(0);
+  const [volume, setVolume] = React.useState(1);
 
   React.useEffect(() => {
     if (isOpen && videoRef.current) {
@@ -1633,6 +1637,50 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
       videoRef.current.play().catch(console.error);
     }
   }, [isOpen]);
+
+  const handlePlayPause = () => {
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  const handleSeek = (time) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  const handleVolumeChange = (newVolume) => {
+    if (videoRef.current) {
+      videoRef.current.volume = newVolume;
+      setVolume(newVolume);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const formatTime = (time) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
 
   if (!isOpen) return null;
 
@@ -1657,12 +1705,12 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
           padding: "0",
           margin: "0",
           position: "relative",
+          background: "#000",
         }}
       >
         <video
           ref={videoRef}
           src="/vidoes/video.mp4"
-          controls
           loop
           muted
           autoPlay
@@ -1676,9 +1724,226 @@ const HTML5VideoPlayer = ({ isOpen, onClose }) => {
           onError={(e) => console.error("Video error:", e)}
           onLoadStart={() => console.log("Video: loadstart")}
           onLoadedData={() => console.log("Video: loadeddata")}
+          onLoadedMetadata={handleLoadedMetadata}
           onCanPlay={() => console.log("Video: canplay")}
-          onPlaying={() => console.log("Video: playing")}
+          onPlaying={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={handleTimeUpdate}
         />
+
+        {/* Custom Controls Overlay */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "0",
+            left: "0",
+            right: "0",
+            background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+            padding: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          {/* Progress Bar */}
+          <div
+            style={{
+              width: "100%",
+              height: "4px",
+              background: "rgba(255,255,255,0.3)",
+              borderRadius: "2px",
+              position: "relative",
+              cursor: "pointer",
+            }}
+            onClick={(e) => {
+              if (videoRef.current && duration) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const percentage = clickX / rect.width;
+                const newTime = duration * percentage;
+                handleSeek(newTime);
+              }
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                height: "100%",
+                background: "#007bff",
+                width: duration ? `${(currentTime / duration) * 100}%` : "0%",
+                borderRadius: "2px",
+              }}
+            />
+          </div>
+
+          {/* Control Buttons */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
+            }}
+          >
+            {/* Left Controls */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Play/Pause Button */}
+              <button
+                onClick={handlePlayPause}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                  padding: "5px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "40px",
+                  height: "40px",
+                }}
+                onMouseEnter={(e) =>
+                  (e.target.style.background = "rgba(255,255,255,0.2)")
+                }
+                onMouseLeave={(e) =>
+                  (e.target.style.background = "transparent")
+                }
+              >
+                {isPlaying ? "⏸️" : "▶️"}
+              </button>
+
+              {/* Backward 10s Button */}
+              <button
+                onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  padding: "5px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "35px",
+                  height: "35px",
+                }}
+                onMouseEnter={(e) =>
+                  (e.target.style.background = "rgba(255,255,255,0.2)")
+                }
+                onMouseLeave={(e) =>
+                  (e.target.style.background = "transparent")
+                }
+              >
+                ⏪
+              </button>
+
+              {/* Forward 10s Button */}
+              <button
+                onClick={() => handleSeek(Math.min(duration, currentTime + 10))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  padding: "5px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "35px",
+                  height: "35px",
+                }}
+                onMouseEnter={(e) =>
+                  (e.target.style.background = "rgba(255,255,255,0.2)")
+                }
+                onMouseLeave={(e) =>
+                  (e.target.style.background = "transparent")
+                }
+              >
+                ⏩
+              </button>
+
+              {/* Time Display */}
+              <span
+                style={{
+                  color: "white",
+                  fontSize: "14px",
+                  fontFamily: "monospace",
+                  minWidth: "100px",
+                }}
+              >
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
+
+            {/* Right Controls */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Volume Control */}
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "5px" }}
+              >
+                <span style={{ color: "white", fontSize: "16px" }}>🔊</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={(e) =>
+                    handleVolumeChange(parseFloat(e.target.value))
+                  }
+                  style={{
+                    width: "60px",
+                    height: "4px",
+                    background: "rgba(255,255,255,0.3)",
+                    outline: "none",
+                    borderRadius: "2px",
+                  }}
+                />
+              </div>
+
+              {/* Fullscreen Button */}
+              <button
+                onClick={() => {
+                  if (videoRef.current) {
+                    if (videoRef.current.requestFullscreen) {
+                      videoRef.current.requestFullscreen();
+                    }
+                  }
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  padding: "5px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "35px",
+                  height: "35px",
+                }}
+                onMouseEnter={(e) =>
+                  (e.target.style.background = "rgba(255,255,255,0.2)")
+                }
+                onMouseLeave={(e) =>
+                  (e.target.style.background = "transparent")
+                }
+              >
+                ⛶
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </Dialog>
   );
