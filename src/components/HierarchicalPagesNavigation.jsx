@@ -60,8 +60,40 @@ const HierarchicalPagesNavigation = ({ store }) => {
     try {
       const chapterKey = getChapterKey(moduleId, chapterId);
       const pages = chapterPagesRef.current[chapterKey] || [];
-      const base = store.toJSON();
-      store.loadJSON({ ...base, pages });
+
+      console.log(
+        "Loading pages for chapter:",
+        chapterKey,
+        "stored pages:",
+        pages.length
+      );
+
+      // Create a completely clean store state
+      const cleanBase = {
+        pages: pages,
+        width: 800,
+        height: 600,
+        // Add any other required Polotno store properties
+        selectedElements: [],
+        history: [],
+        clipboard: null,
+        settings: {
+          width: 800,
+          height: 600,
+        },
+      };
+
+      // Force a complete reload of the store with only chapter-specific pages
+      store.loadJSON(cleanBase);
+
+      console.log(
+        "Loaded chapter pages for:",
+        chapterKey,
+        "pages:",
+        pages.length,
+        "store now has:",
+        store.toJSON().pages?.length || 0
+      );
     } catch (e) {
       console.error("Error loading chapter pages:", e);
     }
@@ -239,25 +271,80 @@ const HierarchicalPagesNavigation = ({ store }) => {
       }
     }
 
-    setModules(
-      modules.map((module) =>
-        module.id === moduleId
-          ? {
-              ...module,
-              chapters: module.chapters.map((chapter) =>
-                chapter.id === chapterId
-                  ? { ...chapter, isExpanded: !chapter.isExpanded }
-                  : chapter
-              ),
-            }
-          : module
-      )
-    );
-
-    // If expanding a chapter, load its pages or start fresh
+    // If expanding a chapter, collapse all other chapters in the same module and make this one active
     if (!isCurrentlyExpanded && moduleId === activeModuleId) {
+      // First save current chapter pages before switching
+      try {
+        const current = store.toJSON();
+        const currentChapterKey = getChapterKey(
+          activeModuleId,
+          activeChapterId
+        );
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+        console.log(
+          "Saved current chapter before switching:",
+          currentChapterKey
+        );
+      } catch (e) {
+        console.error("Error saving current chapter before switching:", e);
+      }
+
+      setModules(
+        modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                chapters: module.chapters.map((chapter) =>
+                  chapter.id === chapterId
+                    ? { ...chapter, isExpanded: true }
+                    : { ...chapter, isExpanded: false }
+                ),
+              }
+            : module
+        )
+      );
       setActiveChapterId(chapterId);
-      loadChapterPages(moduleId, chapterId);
+
+      // Clear the store completely before loading new chapter pages
+      try {
+        store.loadJSON({ pages: [] });
+        console.log("Cleared store before loading chapter pages");
+      } catch (e) {
+        console.error("Error clearing store:", e);
+      }
+
+      // Load the new chapter's pages
+      setTimeout(() => {
+        console.log(
+          "About to load chapter pages for:",
+          getChapterKey(moduleId, chapterId)
+        );
+        loadChapterPages(moduleId, chapterId);
+        console.log(
+          "Store pages after loading:",
+          store.toJSON().pages?.length || 0
+        );
+      }, 50);
+    } else if (isCurrentlyExpanded && moduleId === activeModuleId) {
+      // If collapsing the currently active chapter, just collapse it
+      setModules(
+        modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                chapters: module.chapters.map((chapter) =>
+                  chapter.id === chapterId
+                    ? { ...chapter, isExpanded: false }
+                    : chapter
+                ),
+              }
+            : module
+        )
+      );
     }
   };
 
@@ -526,6 +613,21 @@ const HierarchicalPagesNavigation = ({ store }) => {
     }
   }, []);
 
+  // Load active chapter pages after initialization
+  React.useEffect(() => {
+    if (activeModuleId && activeChapterId && modules.length > 0) {
+      console.log(
+        "Loading active chapter pages on mount:",
+        activeModuleId,
+        activeChapterId
+      );
+      // Add a small delay to ensure store is ready
+      setTimeout(() => {
+        loadChapterPages(activeModuleId, activeChapterId);
+      }, 100);
+    }
+  }, [activeModuleId, activeChapterId, modules]);
+
   // Save modules to localStorage whenever modules change
   React.useEffect(() => {
     try {
@@ -620,6 +722,53 @@ const HierarchicalPagesNavigation = ({ store }) => {
     } catch (e) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save current chapter pages periodically to avoid cross-contamination
+  React.useEffect(() => {
+    // Initialize the current chapter pages snapshot
+    try {
+      const current = store.toJSON();
+      const currentChapterKey = getChapterKey(activeModuleId, activeChapterId);
+      if (!chapterPagesRef.current[currentChapterKey]) {
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+        console.log("Initialized chapter pages for:", currentChapterKey);
+      }
+    } catch (e) {
+      console.error("Error initializing chapter pages:", e);
+    }
+
+    // Save current chapter pages every 2 seconds to capture page additions
+    const saveInterval = setInterval(() => {
+      try {
+        const current = store.toJSON();
+        const currentChapterKey = getChapterKey(
+          activeModuleId,
+          activeChapterId
+        );
+        chapterPagesRef.current[currentChapterKey] = current.pages || [];
+        localStorage.setItem(
+          "polotno-demo-chapter-pages",
+          JSON.stringify(chapterPagesRef.current)
+        );
+        console.log(
+          "Periodic save for chapter:",
+          currentChapterKey,
+          "pages:",
+          current.pages?.length || 0
+        );
+      } catch (e) {
+        console.error("Error in periodic save:", e);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(saveInterval);
+    };
+  }, [activeModuleId, activeChapterId]);
 
   return (
     <div
@@ -860,19 +1009,24 @@ const HierarchicalPagesNavigation = ({ store }) => {
                         </button>
                       </div>
 
-                      {/* Pages under this chapter - render default PagesTimeline ONLY for active module and expanded chapter */}
-                      {chapter.isExpanded && module.id === activeModuleId && (
-                        <div style={{ marginLeft: "10px" }}>
-                          <div
-                            style={{
-                              overflow: "hidden",
-                              position: "relative",
-                            }}
-                          >
-                            <PagesTimeline store={store} defaultOpened={true} />
+                      {/* Pages under this chapter - render default PagesTimeline ONLY for active module, expanded chapter, AND currently active chapter */}
+                      {chapter.isExpanded &&
+                        module.id === activeModuleId &&
+                        chapter.id === activeChapterId && (
+                          <div style={{ marginLeft: "10px" }}>
+                            <div
+                              style={{
+                                overflow: "hidden",
+                                position: "relative",
+                              }}
+                            >
+                              <PagesTimeline
+                                store={store}
+                                defaultOpened={true}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   ))
                 : // Show pages directly if no chapters

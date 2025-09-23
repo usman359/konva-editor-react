@@ -340,7 +340,7 @@ const CustomSidePanel = ({ store }) => {
 };
 
 export const App = ({ store }) => {
-  // Save to localStorage whenever store changes
+  // Save to localStorage only for non-page changes to avoid cross-chapter contamination
   React.useEffect(() => {
     let userClearedStorage = false;
     let hasInitialData = false;
@@ -378,17 +378,20 @@ export const App = ({ store }) => {
       }
     };
 
-    // Save on any store change
+    // Only save on selection changes, not on page changes to prevent cross-chapter contamination
     const handleStoreChange = () => {
-      saveToLocalStorage();
+      // Don't auto-save on page changes - let the hierarchical navigation handle chapter-specific saving
+      console.log(
+        "Store changed, but skipping auto-save to prevent cross-chapter contamination"
+      );
     };
 
-    // Listen for store changes
+    // Only listen to selection changes, not page changes
     if (store.on) {
-      store.on("change", handleStoreChange);
-      store.on("update", handleStoreChange);
       store.on("selection:change", handleStoreChange);
-      console.log("Store event listeners attached");
+      console.log(
+        "Store selection change listener attached (page changes ignored)"
+      );
     } else {
       console.log("Store.on not available, using fallback approach");
     }
@@ -402,8 +405,8 @@ export const App = ({ store }) => {
     // Add manual save to window for testing
     window.manualSave = manualSave;
 
-    // Also save periodically as backup
-    const saveInterval = setInterval(saveToLocalStorage, 5000);
+    // Reduced periodic save frequency to minimize interference
+    const saveInterval = setInterval(saveToLocalStorage, 30000); // Every 30 seconds instead of 5
 
     // Test save immediately
     setTimeout(() => {
@@ -430,8 +433,6 @@ export const App = ({ store }) => {
 
     return () => {
       if (store.off) {
-        store.off("change", handleStoreChange);
-        store.off("update", handleStoreChange);
         store.off("selection:change", handleStoreChange);
       }
       clearInterval(saveInterval);
@@ -439,18 +440,13 @@ export const App = ({ store }) => {
     };
   }, [store]);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount - DISABLED to prevent interference with chapter-specific page management
   React.useEffect(() => {
-    try {
-      const savedState = localStorage.getItem("polotno-demo-state");
-      if (savedState) {
-        const json = JSON.parse(savedState);
-        store.loadJSON(json);
-        console.log("Loaded from localStorage");
-      }
-    } catch (error) {
-      console.error("Error loading from localStorage:", error);
-    }
+    // This was causing cross-contamination between chapters
+    // Chapter-specific page management is now handled in HierarchicalPagesNavigation
+    console.log(
+      "Global store loading disabled - using chapter-specific management"
+    );
   }, [store]);
 
   // Simple text replacement for layers panel
@@ -1045,11 +1041,38 @@ export const App = ({ store }) => {
 
   // Add slide numbers and name editing functionality
   React.useEffect(() => {
+    // Clear any "new slide" entries from localStorage to fix naming issues
+    try {
+      const savedNames = JSON.parse(
+        localStorage.getItem("polotno-demo-page-names") || "{}"
+      );
+      let hasChanges = false;
+      Object.keys(savedNames).forEach((key) => {
+        if (savedNames[key] === "new slide") {
+          delete savedNames[key];
+          hasChanges = true;
+        }
+      });
+      if (hasChanges) {
+        localStorage.setItem(
+          "polotno-demo-page-names",
+          JSON.stringify(savedNames)
+        );
+        console.log("Cleared 'new slide' entries from localStorage");
+      }
+    } catch (e) {
+      console.error("Error clearing 'new slide' entries:", e);
+    }
+
     const addSlideNumbersAndNames = () => {
-      // Find all PagesTimeline components
-      const pagesTimelines = document.querySelectorAll(
+      // Find only the currently visible PagesTimeline component to avoid cross-contamination
+      const activePagesTimeline = document.querySelector(
         ".polotno-pages-timeline"
       );
+      if (!activePagesTimeline) return;
+
+      // Process only the active PagesTimeline
+      const pagesTimelines = [activePagesTimeline];
 
       pagesTimelines.forEach((timeline) => {
         // Find page containers
@@ -1142,8 +1165,11 @@ export const App = ({ store }) => {
               localStorage.getItem("polotno-demo-page-names") || "{}"
             );
             const savedName = savedNames[`slide-${index}`];
-            if (savedName) {
+            if (savedName && savedName !== "new slide") {
               slideName.textContent = savedName;
+            } else {
+              // Ensure first slide is always "Slide 1" and others follow the pattern
+              slideName.textContent = `Slide ${index + 1}`;
             }
           } catch (e) {
             console.error("Error loading slide name:", e);
@@ -1199,7 +1225,8 @@ export const App = ({ store }) => {
       subtree: true,
     });
 
-    // Also listen to store changes for immediate updates
+    // Re-enabled: Store change listener for slide numbering (cross-contamination fixed)
+    // The addSlideNumbersAndNames function now only processes the active PagesTimeline
     const unsubscribe = store.on("change", () => {
       // Add a small delay to ensure DOM is updated
       setTimeout(() => {
@@ -1209,7 +1236,9 @@ export const App = ({ store }) => {
 
     return () => {
       observer.disconnect();
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
