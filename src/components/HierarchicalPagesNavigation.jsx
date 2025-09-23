@@ -69,9 +69,54 @@ const HierarchicalPagesNavigation = ({ store, onModulesChange }) => {
         pages.length
       );
 
+      // Check if there's a saved slide order for this chapter
+      // Use "default" for modules without chapters
+      const effectiveChapterId = chapterId || "default";
+      const slideOrderKey = `slide-order-${moduleId}-${effectiveChapterId}`;
+      const savedSlideOrder = localStorage.getItem(slideOrderKey);
+      const idOrderKey = `slide-id-order-${moduleId}-${effectiveChapterId}`;
+      const savedIdOrder = localStorage.getItem(idOrderKey);
+
+      let finalPages = pages;
+
+      // Only apply saved slide order if the chapter has pages
+      // This prevents new chapters from inheriting slide order from other chapters
+      if (pages.length > 0) {
+        if (savedIdOrder) {
+          try {
+            const idOrder = JSON.parse(savedIdOrder);
+            const byId = reorderPagesByIdOrder(pages, idOrder);
+            if (byId.length === pages.length) {
+              finalPages = byId;
+              console.log("Applied saved ID slide order to chapter pages");
+            }
+          } catch (e) {
+            console.error("Error parsing saved id slide order:", e);
+          }
+        } else if (savedSlideOrder) {
+          try {
+            const slideOrder = JSON.parse(savedSlideOrder);
+            console.log("Found saved slide order:", slideOrder);
+
+            // Reorder pages based on the saved slide order
+            const reorderedPages = reorderPagesBySlideOrder(pages, slideOrder);
+            if (reorderedPages.length === pages.length) {
+              finalPages = reorderedPages;
+              console.log("Applied saved slide order to chapter pages");
+            }
+          } catch (e) {
+            console.error("Error parsing saved slide order:", e);
+          }
+        }
+      } else {
+        console.log(
+          "New chapter with no pages - starting with fresh slide order"
+        );
+      }
+
       // Create a completely clean store state
       const cleanBase = {
-        pages: pages,
+        pages: finalPages,
         width: 800,
         height: 600,
         // Add any other required Polotno store properties
@@ -91,12 +136,45 @@ const HierarchicalPagesNavigation = ({ store, onModulesChange }) => {
         "Loaded chapter pages for:",
         chapterKey,
         "pages:",
-        pages.length,
+        finalPages.length,
         "store now has:",
         store.toJSON().pages?.length || 0
       );
     } catch (e) {
       console.error("Error loading chapter pages:", e);
+    }
+  };
+
+  // Helper function to reorder pages based on slide order (names)
+  const reorderPagesBySlideOrder = (pages, slideOrder) => {
+    try {
+      const slideNameToPage = {};
+      pages.forEach((page, index) => {
+        const slideName = `Slide ${index + 1}`;
+        slideNameToPage[slideName] = page;
+      });
+      const reorderedPages = slideOrder
+        .map((slideName) => slideNameToPage[slideName])
+        .filter(Boolean);
+      return reorderedPages.length ? reorderedPages : pages;
+    } catch (e) {
+      console.error("Error reordering pages:", e);
+      return pages;
+    }
+  };
+
+  // Helper function to reorder pages based on page ID order (preferred)
+  const reorderPagesByIdOrder = (pages, idOrder) => {
+    try {
+      const idToPage = {};
+      pages.forEach((page) => {
+        idToPage[page.id] = page;
+      });
+      const reordered = idOrder.map((id) => idToPage[id]).filter(Boolean);
+      return reordered.length ? reordered : pages;
+    } catch (e) {
+      console.error("Error reordering pages by id:", e);
+      return pages;
     }
   };
 
@@ -477,6 +555,18 @@ const HierarchicalPagesNavigation = ({ store, onModulesChange }) => {
       // Initialize empty pages for the new chapter
       const chapterKey = getChapterKey(activeModuleId, newChapter.id);
       chapterPagesRef.current[chapterKey] = [];
+
+      // Clear any existing slide order and name map data for the new chapter
+      const slideOrderKey = `slide-order-${activeModuleId}-${newChapter.id}`;
+      const idOrderKey = `slide-id-order-${activeModuleId}-${newChapter.id}`;
+      const nameMapKey = `slide-name-map-${activeModuleId}-${newChapter.id}`;
+      localStorage.removeItem(slideOrderKey);
+      localStorage.removeItem(idOrderKey);
+      localStorage.removeItem(nameMapKey);
+      console.log(
+        "Cleared slide order/name map for new chapter:",
+        newChapter.id
+      );
 
       try {
         const base = store.toJSON();

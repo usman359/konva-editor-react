@@ -1085,6 +1085,59 @@ export const App = ({ store }) => {
       console.error("Error clearing 'new slide' entries:", e);
     }
 
+    // Helpers for per-chapter slide name map keyed by page ID
+    const getActiveScopeKeys = () => {
+      const chapterId = modulesData?.activeChapterId || "default";
+      const moduleId = modulesData?.activeModuleId || 1;
+      return { moduleId, chapterId };
+    };
+
+    const loadNameMap = (moduleId, chapterId) => {
+      try {
+        const key = `slide-name-map-${moduleId}-${chapterId}`;
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        console.error("Error loading name map:", e);
+        return {};
+      }
+    };
+
+    const saveNameMap = (moduleId, chapterId, map) => {
+      try {
+        const key = `slide-name-map-${moduleId}-${chapterId}`;
+        localStorage.setItem(key, JSON.stringify(map));
+      } catch (e) {
+        console.error("Error saving name map:", e);
+      }
+    };
+
+    const maybeMigrateNamesFromSavedOrder = (moduleId, chapterId) => {
+      // If we have an old saved slide-order (names) and an id order, migrate to id->name map once
+      try {
+        const nameMapKey = `slide-name-map-${moduleId}-${chapterId}`;
+        const existing = localStorage.getItem(nameMapKey);
+        if (existing) return; // already migrated/exists
+
+        const idKey = `slide-id-order-${moduleId}-${chapterId}`;
+        const nameKey = `slide-order-${moduleId}-${chapterId}`;
+        const idRaw = localStorage.getItem(idKey);
+        const nameRaw = localStorage.getItem(nameKey);
+        if (!idRaw || !nameRaw) return;
+        const ids = JSON.parse(idRaw);
+        const names = JSON.parse(nameRaw);
+        if (!Array.isArray(ids) || !Array.isArray(names)) return;
+        if (ids.length !== names.length) return;
+        const map = {};
+        ids.forEach((id, i) => {
+          map[id] = names[i] || `Slide ${i + 1}`;
+        });
+        localStorage.setItem(nameMapKey, JSON.stringify(map));
+      } catch (e) {
+        console.error("Error migrating names from saved order:", e);
+      }
+    };
+
     const addSlideNumbersAndNames = () => {
       // Find only the currently visible PagesTimeline component to avoid cross-contamination
       const activePagesTimeline = document.querySelector(
@@ -1100,6 +1153,34 @@ export const App = ({ store }) => {
         const pageContainers = timeline.querySelectorAll(
           ".polotno-page-container"
         );
+
+        // Prepare per-chapter name map
+        const { moduleId, chapterId } = getActiveScopeKeys();
+        maybeMigrateNamesFromSavedOrder(moduleId, chapterId);
+        let nameMap = loadNameMap(moduleId, chapterId);
+
+        // Initialize name map once per chapter if empty
+        try {
+          const storePages = store.pages || [];
+          if (!nameMap || Object.keys(nameMap).length === 0) {
+            const initialMap = {};
+            storePages.forEach((p, i) => {
+              if (p?.id) initialMap[p.id] = `Slide ${i + 1}`;
+            });
+            saveNameMap(moduleId, chapterId, initialMap);
+            nameMap = initialMap;
+          } else {
+            // Ensure any newly added page gets a default name
+            (storePages || []).forEach((p, i) => {
+              if (p?.id && !nameMap[p.id]) {
+                nameMap[p.id] = `Slide ${i + 1}`;
+              }
+            });
+            saveNameMap(moduleId, chapterId, nameMap);
+          }
+        } catch (e) {
+          console.error("Error initializing/updating name map:", e);
+        }
 
         pageContainers.forEach((container, index) => {
           // Check if slide name already exists for this container to avoid duplicates
@@ -1127,7 +1208,11 @@ export const App = ({ store }) => {
 
           // Create slide name
           const slideName = document.createElement("div");
-          slideName.textContent = `Slide ${index + 1}`;
+          // Determine page ID from store by index (DOM order matches store pages order)
+          const pageId = (store.pages || [])[index]?.id;
+          const defaultName = `Slide ${index + 1}`;
+          const resolvedName = (pageId && nameMap[pageId]) || defaultName;
+          slideName.textContent = resolvedName;
           slideName.style.cssText = `
             font-size: 11px;
             color: #333;
@@ -1195,18 +1280,16 @@ export const App = ({ store }) => {
             const saveSlideName = (newName) => {
               slideName.textContent = newName;
 
-              // Save to localStorage
+              // Persist into per-chapter name map keyed by page ID
               try {
-                const savedNames = JSON.parse(
-                  localStorage.getItem("polotno-demo-page-names") || "{}"
-                );
-                savedNames[`slide-${index}`] = newName;
-                localStorage.setItem(
-                  "polotno-demo-page-names",
-                  JSON.stringify(savedNames)
-                );
+                const { moduleId, chapterId } = getActiveScopeKeys();
+                const pageId = (store.pages || [])[index]?.id;
+                if (!pageId) return;
+                const map = loadNameMap(moduleId, chapterId);
+                map[pageId] = newName;
+                saveNameMap(moduleId, chapterId, map);
               } catch (e) {
-                console.error("Error saving slide name:", e);
+                console.error("Error saving slide name to name map:", e);
               }
             };
 
@@ -1220,8 +1303,7 @@ export const App = ({ store }) => {
 
           slideName.addEventListener("click", editSlideName);
 
-          // Always use sequential slide names (Slide 1, Slide 2, Slide 3, etc.)
-          slideName.textContent = `Slide ${index + 1}`;
+          // Names already resolved from per-chapter name map above
 
           // Assemble the container
           slideContainer.appendChild(slideName);
@@ -1282,8 +1364,111 @@ export const App = ({ store }) => {
       }, 50);
     });
 
+    // Function to detect and save slide reordering
+    const setupSlideReorderDetection = () => {
+      let lastSlideOrder = [];
+      let lastIdOrder = [];
+
+      const detectSlideReorder = () => {
+        const pagesTimeline = document.querySelector(".polotno-pages-timeline");
+        if (!pagesTimeline) return;
+
+        const pageContainers = pagesTimeline.querySelectorAll(
+          ".polotno-page-container"
+        );
+        if (pageContainers.length === 0) return;
+
+        // Build current id order from store
+        const currentIdOrder = (store.pages || []).map((p) => p.id);
+
+        // For backward compatibility: derive current names from name map if needed (for debugging only)
+        const { moduleId, chapterId } = getActiveScopeKeys();
+        const nameMap = loadNameMap(moduleId, chapterId);
+        const currentSlideOrder = currentIdOrder.map(
+          (id, i) => nameMap[id] || `Slide ${i + 1}`
+        );
+
+        // Debug: Log current order every few checks
+        if (Math.random() < 0.1) {
+          // Log 10% of the time
+          console.log("Current slide order:", currentSlideOrder);
+        }
+
+        // Check if order has changed (either names or IDs)
+        const orderChangedByName = !arraysEqual(
+          lastSlideOrder,
+          currentSlideOrder
+        );
+        const orderChangedById = !arraysEqual(lastIdOrder, currentIdOrder);
+
+        if (orderChangedById && lastIdOrder.length > 0) {
+          console.log("🎯 SLIDE ORDER CHANGED!");
+          console.log("Names from:", lastSlideOrder, "to:", currentSlideOrder);
+          console.log("IDs from:", lastIdOrder, "to:", currentIdOrder);
+          console.log("modulesData at change detection:", modulesData);
+
+          // Save the new slide ID order to localStorage (names persist per page)
+          saveSlideOrder(currentSlideOrder, currentIdOrder);
+        }
+
+        lastSlideOrder = [...currentSlideOrder];
+        lastIdOrder = [...currentIdOrder];
+      };
+
+      // Helper function to compare arrays
+      const arraysEqual = (a, b) => {
+        if (a.length !== b.length) return false;
+        return a.every((val, index) => val === b[index]);
+      };
+
+      // Save slide order to localStorage
+      const saveSlideOrder = (slideOrder, idOrder) => {
+        try {
+          console.log("=== SAVE SLIDE ORDER DEBUG ===");
+          console.log("modulesData:", modulesData);
+          console.log("activeModuleId:", modulesData?.activeModuleId);
+          console.log("activeChapterId:", modulesData?.activeChapterId);
+
+          // Use "default" for chapters when there are no chapters, otherwise use the actual chapter ID
+          const chapterId = modulesData?.activeChapterId || "default";
+          const moduleId = modulesData?.activeModuleId || 1;
+          const key = `slide-order-${moduleId}-${chapterId}`;
+          const idKey = `slide-id-order-${moduleId}-${chapterId}`;
+
+          console.log("Using keys:", key, idKey);
+
+          // Do not persist name arrays anymore (deprecated), keep id order only
+          localStorage.setItem(idKey, JSON.stringify(idOrder || []));
+
+          console.log(
+            "Saved slide order (names):",
+            slideOrder,
+            "and (ids):",
+            idOrder,
+            "with keys:",
+            key,
+            idKey
+          );
+          console.log("=== END SAVE DEBUG ===");
+        } catch (e) {
+          console.error("Error saving slide order:", e);
+        }
+      };
+
+      // Set up a periodic check for slide reordering
+      const reorderCheckInterval = setInterval(detectSlideReorder, 500);
+
+      return () => {
+        clearInterval(reorderCheckInterval);
+      };
+    };
+
+    // Setup slide reorder detection
+    const cleanupReorderDetection = setupSlideReorderDetection();
+
     return () => {
       observer.disconnect();
+      cleanupReorderDetection();
       if (unsubscribe) {
         unsubscribe();
       }
