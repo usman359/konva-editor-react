@@ -9,6 +9,7 @@ import { Icon, InputGroup } from "@blueprintjs/core";
 import { Search, User } from "@blueprintjs/icons";
 import { Workspace } from "polotno/canvas/workspace";
 import { DEFAULT_SECTIONS, SectionTab } from "polotno/side-panel";
+import { Toaster, toast } from "react-hot-toast";
 
 import "@blueprintjs/core/lib/css/blueprint.css";
 
@@ -340,6 +341,11 @@ const CustomSidePanel = ({ store }) => {
 };
 
 export const App = ({ store }) => {
+  const [modulesData, setModulesData] = React.useState(null);
+
+  const handleModulesChange = (data) => {
+    setModulesData(data);
+  };
   // Save to localStorage only for non-page changes to avoid cross-chapter contamination
   React.useEffect(() => {
     let userClearedStorage = false;
@@ -850,7 +856,12 @@ export const App = ({ store }) => {
   }, []);
 
   // Function to open slide name modal
-  const openSlideNameModal = (slideNumber, currentName, onSave) => {
+  const openSlideNameModal = (
+    slideNumber,
+    currentName,
+    onSave,
+    onValidationError
+  ) => {
     // Create modal overlay
     const modal = document.createElement("div");
     modal.style.cssText = `
@@ -1012,6 +1023,16 @@ export const App = ({ store }) => {
     // Handle save
     const saveEdit = () => {
       const newName = input.value.trim() || `Slide ${slideNumber}`;
+
+      // Check if there's a validation error callback
+      if (onValidationError) {
+        const validationResult = onValidationError(newName);
+        if (validationResult === false) {
+          // Validation failed, don't close modal
+          return;
+        }
+      }
+
       onSave(newName);
       document.body.removeChild(modal);
     };
@@ -1138,7 +1159,40 @@ export const App = ({ store }) => {
           // Add click handlers for editing
           const editSlideName = () => {
             const currentName = slideName.textContent;
-            openSlideNameModal(index + 1, currentName, (newName) => {
+
+            // Validation function that returns false if validation fails
+            const validateSlideName = (newName) => {
+              // Check for duplicate slide names within the same chapter
+              const allSlideNames = Array.from(pageContainers)
+                .map((container, slideIndex) => {
+                  if (slideIndex === index) return null; // Skip current slide
+                  const existingSlideName = container.querySelector(
+                    ".slide-number-container > div"
+                  );
+                  return existingSlideName
+                    ? existingSlideName.textContent
+                    : `Slide ${slideIndex + 1}`;
+                })
+                .filter(Boolean);
+
+              const trimmedNewName = newName.trim();
+              // Case-insensitive comparison
+              const isDuplicate = allSlideNames.some(
+                (existingName) =>
+                  existingName.toLowerCase() === trimmedNewName.toLowerCase()
+              );
+
+              if (isDuplicate) {
+                toast.error(
+                  `A slide with the name "${trimmedNewName}" already exists in this chapter. Please choose a different name.`
+                );
+                return false; // Validation failed
+              }
+              return true; // Validation passed
+            };
+
+            // Save function that only runs if validation passes
+            const saveSlideName = (newName) => {
               slideName.textContent = newName;
 
               // Save to localStorage
@@ -1154,26 +1208,20 @@ export const App = ({ store }) => {
               } catch (e) {
                 console.error("Error saving slide name:", e);
               }
-            });
+            };
+
+            openSlideNameModal(
+              index + 1,
+              currentName,
+              saveSlideName,
+              validateSlideName
+            );
           };
 
           slideName.addEventListener("click", editSlideName);
 
-          // Load saved name from localStorage
-          try {
-            const savedNames = JSON.parse(
-              localStorage.getItem("polotno-demo-page-names") || "{}"
-            );
-            const savedName = savedNames[`slide-${index}`];
-            if (savedName && savedName !== "new slide") {
-              slideName.textContent = savedName;
-            } else {
-              // Ensure first slide is always "Slide 1" and others follow the pattern
-              slideName.textContent = `Slide ${index + 1}`;
-            }
-          } catch (e) {
-            console.error("Error loading slide name:", e);
-          }
+          // Always use sequential slide names (Slide 1, Slide 2, Slide 3, etc.)
+          slideName.textContent = `Slide ${index + 1}`;
 
           // Assemble the container
           slideContainer.appendChild(slideName);
@@ -1574,7 +1622,7 @@ export const App = ({ store }) => {
       if (invalidFiles.length > 0) {
         const invalidFileNames = invalidFiles.map((f) => f.name).join(", ");
         const fileTypeText = isFontInput ? "font files" : "image files";
-        alert(
+        toast.error(
           `The following files are not supported: ${invalidFileNames}\n\nSupported ${fileTypeText}: ${supportedFormatsText}`
         );
 
@@ -1766,6 +1814,9 @@ export const App = ({ store }) => {
 
   return (
     <>
+      {/* React Hot Toast Toaster */}
+      <Toaster position="top-right" />
+
       {/* Hierarchical Pages Navigation - Top Left Position */}
       <div
         style={{
@@ -1779,7 +1830,10 @@ export const App = ({ store }) => {
           border: "1px solid #ccc",
         }}
       >
-        <HierarchicalPagesNavigation store={store} />
+        <HierarchicalPagesNavigation
+          store={store}
+          onModulesChange={handleModulesChange}
+        />
       </div>
 
       <PolotnoContainer
@@ -1802,7 +1856,13 @@ export const App = ({ store }) => {
             }}
           >
             <Toolbar store={store} downloadButtonEnabled={false} />
-            <CustomDownloadButton store={store} />
+            <CustomDownloadButton
+              store={store}
+              modules={modulesData?.modules || []}
+              chapterPagesRef={modulesData?.chapterPagesRef}
+              activeModuleId={modulesData?.activeModuleId}
+              activeChapterId={modulesData?.activeChapterId}
+            />
             <CustomCreateButton store={store} />
           </div>
           <Workspace store={store} />

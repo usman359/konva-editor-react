@@ -2,6 +2,7 @@ import React from "react";
 import { Video } from "@blueprintjs/icons";
 import HTML5VideoPlayer from "./HTML5VideoPlayer";
 import { Button } from "@blueprintjs/core";
+import { toast } from "react-hot-toast";
 
 const CustomCreateButton = () => {
   const [hasNarrations, setHasNarrations] = React.useState(false);
@@ -204,7 +205,7 @@ const CustomCreateButton = () => {
 
   const handleCreateVideo = () => {
     if (!hasNarrations) {
-      alert(
+      toast.error(
         "No narrations found in the Layers tab. Add some narrations first!"
       );
       return;

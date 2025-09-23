@@ -2,9 +2,10 @@ import React from "react";
 import { Plus, FolderOpen, Edit } from "@blueprintjs/icons";
 import { PagesTimeline } from "polotno/pages-timeline";
 import { Button, Dialog, InputGroup } from "@blueprintjs/core";
+import { toast } from "react-hot-toast";
 
 // Custom Hierarchical Pages Navigation Component
-const HierarchicalPagesNavigation = ({ store }) => {
+const HierarchicalPagesNavigation = ({ store, onModulesChange }) => {
   const [modules, setModules] = React.useState([
     {
       id: 1,
@@ -110,7 +111,9 @@ const HierarchicalPagesNavigation = ({ store }) => {
 
   const handleDeleteModule = (moduleId) => {
     if (modules.length <= 1) {
-      alert("Cannot delete the last module. At least one module must exist.");
+      toast.error(
+        "Cannot delete the last module. At least one module must exist."
+      );
       return;
     }
 
@@ -181,7 +184,9 @@ const HierarchicalPagesNavigation = ({ store }) => {
   const handleDeleteChapter = (moduleId, chapterId) => {
     const module = modules.find((m) => m.id === moduleId);
     if (module?.chapters?.length <= 1) {
-      alert("Cannot delete the last chapter. At least one chapter must exist.");
+      toast.error(
+        "Cannot delete the last chapter. At least one chapter must exist."
+      );
       return;
     }
     setChapterToDelete({ moduleId, chapterId });
@@ -352,6 +357,18 @@ const HierarchicalPagesNavigation = ({ store }) => {
     if (!newItemName.trim()) return;
 
     if (createType === "module") {
+      // Check for duplicate module names
+      const trimmedName = newItemName.trim();
+      const existingModule = modules.find(
+        (module) => module.name.toLowerCase() === trimmedName.toLowerCase()
+      );
+
+      if (existingModule && existingModule.id !== editingModuleId) {
+        toast.error(
+          `A module with the name "${trimmedName}" already exists. Please choose a different name.`
+        );
+        return;
+      }
       if (editingModuleId) {
         // Editing existing module
         setModules(
@@ -400,6 +417,25 @@ const HierarchicalPagesNavigation = ({ store }) => {
         } catch (e) {}
       }
     } else if (createType === "chapter") {
+      // Check for duplicate chapter names within the same module
+      const trimmedName = newItemName.trim();
+      const currentModule = modules.find(
+        (module) => module.id === activeModuleId
+      );
+
+      if (currentModule) {
+        const existingChapter = currentModule.chapters.find(
+          (chapter) => chapter.name.toLowerCase() === trimmedName.toLowerCase()
+        );
+
+        if (existingChapter) {
+          toast.error(
+            `A chapter with the name "${trimmedName}" already exists in this module. Please choose a different name.`
+          );
+          return;
+        }
+      }
+
       // Save current chapter pages before creating new one (if we're switching modules)
       try {
         const current = store.toJSON();
@@ -627,6 +663,24 @@ const HierarchicalPagesNavigation = ({ store }) => {
       }, 100);
     }
   }, [activeModuleId, activeChapterId, modules]);
+
+  // Notify parent component when modules change
+  React.useEffect(() => {
+    if (onModulesChange) {
+      onModulesChange({
+        modules,
+        chapterPagesRef,
+        activeModuleId,
+        activeChapterId,
+      });
+    }
+  }, [
+    modules,
+    chapterPagesRef,
+    activeModuleId,
+    activeChapterId,
+    onModulesChange,
+  ]);
 
   // Save modules to localStorage whenever modules change
   React.useEffect(() => {
