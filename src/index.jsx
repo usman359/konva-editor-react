@@ -5,8 +5,15 @@ import { ZoomButtons } from "polotno/toolbar/zoom-buttons";
 import React from "react";
 import ReactDOM from "react-dom/client";
 // Native sections API from Polotno
-import { Icon, InputGroup } from "@blueprintjs/core";
-import { Search, User } from "@blueprintjs/icons";
+import {
+  Icon,
+  InputGroup,
+  Button,
+  TextArea,
+  Dialog,
+  Classes,
+} from "@blueprintjs/core";
+import { Search, User, Code } from "@blueprintjs/icons";
 import { Workspace } from "polotno/canvas/workspace";
 import { DEFAULT_SECTIONS, SectionTab } from "polotno/side-panel";
 import { Toaster, toast } from "react-hot-toast";
@@ -319,16 +326,348 @@ const AvatarSection = {
   Panel: ({ store }) => <AvatarPanel store={store} />,
 };
 
-// Custom Side Panel that registers native Avatar section
+// Code Snippet Panel Component
+const CodeSnippetPanel = observer(({ store }) => {
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [codeText, setCodeText] = React.useState("");
+  const [language, setLanguage] = React.useState("javascript");
+  const [fontSize, setFontSize] = React.useState(14);
+
+  const codeSnippetTemplates = [
+    {
+      name: "JavaScript Function",
+      code: `function exampleFunction(param1, param2) {
+  // Your code here
+  const result = param1 + param2;
+  return result;
+}`,
+      language: "javascript",
+    },
+    {
+      name: "React Component",
+      code: `import React from 'react';
+
+const MyComponent = ({ title, children }) => {
+  return (
+    <div className="my-component">
+      <h2>{title}</h2>
+      {children}
+    </div>
+  );
+};
+
+export default MyComponent;`,
+      language: "jsx",
+    },
+    {
+      name: "Python Function",
+      code: `def example_function(param1, param2):
+    """
+    Example function with docstring
+    """
+    result = param1 + param2
+    return result`,
+      language: "python",
+    },
+    {
+      name: "CSS Styles",
+      code: `.my-class {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background-color: #f0f0f0;
+  border-radius: 8px;
+}`,
+      language: "css",
+    },
+    {
+      name: "HTML Structure",
+      code: `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Hello World</h1>
+    </div>
+</body>
+</html>`,
+      language: "html",
+    },
+    {
+      name: "SQL Query",
+      code: `SELECT 
+    u.id,
+    u.name,
+    u.email,
+    COUNT(o.id) as order_count
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+WHERE u.created_at >= '2024-01-01'
+GROUP BY u.id, u.name, u.email
+ORDER BY order_count DESC;`,
+      language: "sql",
+    },
+  ];
+
+  const addCodeSnippet = (code, lang = "javascript") => {
+    try {
+      console.log("Adding code snippet:", { code, lang, fontSize });
+
+      // Create a new text element
+      const newTextElement = {
+        type: "text",
+        text: `// ${lang.toUpperCase()}\n${code}`,
+        x: 50,
+        y: 50,
+        width: 700,
+        fontSize: fontSize,
+        fontFamily: "Monaco, 'Courier New', monospace",
+        fill: "#333",
+        align: "left",
+        verticalAlign: "top",
+        id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      };
+
+      // Get current store state
+      const currentState = store.toJSON();
+      const currentPages = [...(currentState.pages || [])];
+
+      // Find the active page (current page)
+      const activePageIndex = store.activePage?.id
+        ? currentPages.findIndex((page) => page.id === store.activePage.id)
+        : 0;
+      const activePage = currentPages[activePageIndex] || currentPages[0];
+
+      if (activePage) {
+        // Create a new page object with the added element
+        const updatedPage = {
+          ...activePage,
+          children: [...(activePage.children || []), newTextElement],
+        };
+
+        // Update the pages array
+        currentPages[activePageIndex] = updatedPage;
+
+        // Reload the store with the updated pages
+        store.loadJSON({
+          ...currentState,
+          pages: currentPages,
+        });
+
+        console.log("Text element added to page:", newTextElement);
+        toast.success("Code snippet added to canvas!");
+        setIsDialogOpen(false);
+        setCodeText("");
+      } else {
+        throw new Error("No active page found");
+      }
+    } catch (error) {
+      console.error("Error adding code snippet:", error);
+      console.error("Error details:", error.message, error.stack);
+
+      // Try a fallback approach - create a completely new state
+      try {
+        console.log("Trying fallback approach...");
+        const currentState = store.toJSON();
+        const currentPages = [...(currentState.pages || [])];
+
+        if (currentPages.length > 0) {
+          const firstPage = { ...currentPages[0] };
+          firstPage.children = [...(firstPage.children || [])];
+
+          const simpleTextElement = {
+            type: "text",
+            text: `// ${lang.toUpperCase()}\n${code}`,
+            x: 50,
+            y: 50,
+            fontSize: fontSize,
+            id: `text-${Date.now()}`,
+          };
+
+          firstPage.children.push(simpleTextElement);
+
+          // Create new pages array
+          const newPages = [firstPage, ...currentPages.slice(1)];
+
+          store.loadJSON({
+            ...currentState,
+            pages: newPages,
+          });
+
+          toast.success("Code snippet added to canvas (fallback version)!");
+          setIsDialogOpen(false);
+          setCodeText("");
+          return;
+        }
+      } catch (fallbackError) {
+        console.error("Fallback also failed:", fallbackError);
+      }
+
+      toast.error(`Failed to add code snippet: ${error.message}`);
+    }
+  };
+
+  const handleTemplateClick = (template) => {
+    setCodeText(template.code);
+    setLanguage(template.language);
+    setIsDialogOpen(true);
+  };
+
+  const handleCustomCode = () => {
+    setCodeText("");
+    setLanguage("javascript");
+    setIsDialogOpen(true);
+  };
+
+  return (
+    <div style={{ padding: "16px" }}>
+      <div style={{ marginBottom: "16px" }}>
+        <h3
+          style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: "600" }}
+        >
+          Code Snippets
+        </h3>
+        <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#666" }}>
+          Add code snippets to your slides
+        </p>
+      </div>
+
+      {/* Template Buttons */}
+      <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
+        {codeSnippetTemplates.map((template, index) => (
+          <Button
+            key={index}
+            text={template.name}
+            small
+            outlined
+            onClick={() => handleTemplateClick(template)}
+            style={{
+              justifyContent: "flex-start",
+              textAlign: "left",
+              fontSize: "12px",
+            }}
+          />
+        ))}
+        <Button
+          text="Custom Code"
+          small
+          intent="primary"
+          onClick={handleCustomCode}
+          style={{ marginTop: "8px" }}
+        />
+      </div>
+
+      {/* Code Dialog */}
+      <Dialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        title="Add Code Snippet"
+        style={{ width: "600px" }}
+      >
+        <div className={Classes.DIALOG_BODY}>
+          <div style={{ marginBottom: "16px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                fontWeight: "600",
+              }}
+            >
+              Language:
+            </label>
+            <InputGroup
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              placeholder="e.g., javascript, python, css"
+              small
+            />
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                fontWeight: "600",
+              }}
+            >
+              Font Size:
+            </label>
+            <InputGroup
+              type="number"
+              value={fontSize}
+              onChange={(e) => setFontSize(parseInt(e.target.value) || 14)}
+              min="8"
+              max="24"
+              small
+            />
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                fontWeight: "600",
+              }}
+            >
+              Code:
+            </label>
+            <TextArea
+              value={codeText}
+              onChange={(e) => setCodeText(e.target.value)}
+              placeholder="Enter your code here..."
+              rows={12}
+              style={{
+                fontFamily: "Monaco, 'Courier New', monospace",
+                fontSize: "12px",
+              }}
+            />
+          </div>
+        </div>
+
+        <div className={Classes.DIALOG_FOOTER}>
+          <div className={Classes.DIALOG_FOOTER_ACTIONS}>
+            <Button text="Cancel" onClick={() => setIsDialogOpen(false)} />
+            <Button
+              text="Add to Canvas"
+              intent="primary"
+              onClick={() => addCodeSnippet(codeText, language)}
+              disabled={!codeText.trim()}
+            />
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  );
+});
+
+// Code Snippet Section
+const CodeSnippetSection = {
+  name: "code",
+  Tab: observer((props) => (
+    <SectionTab {...props} name="Code">
+      <Icon icon={<Code />} />
+    </SectionTab>
+  )),
+  Panel: ({ store }) => <CodeSnippetPanel store={store} />,
+};
+
+// Custom Side Panel that registers native Avatar and Code sections
 const CustomSidePanel = ({ store }) => {
   const sections = React.useMemo(() => {
-    // Insert Avatar right after Photos
+    // Insert Avatar and Code sections after Photos
     const list = [...DEFAULT_SECTIONS];
     const photosIndex = list.findIndex((s) => s.name === "photos");
     if (photosIndex >= 0) {
-      list.splice(photosIndex + 1, 0, AvatarSection);
+      list.splice(photosIndex + 1, 0, AvatarSection, CodeSnippetSection);
     } else {
-      list.splice(2, 0, AvatarSection);
+      list.splice(2, 0, AvatarSection, CodeSnippetSection);
     }
     return list;
   }, []);
